@@ -1,0 +1,421 @@
+/* palette.lab980.com — dark, monospaced, the same tokens as the lab980 apex. */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --black:  #0A0A0A;
+  --panel:  #111111;
+  --raised: #161616;
+  --white:  #F0EDE8;
+  --accent: #4A9EFF;
+  --mid:    #9B9B9B;
+  --faint:  #6E6E6E;
+  --border: #232323;
+  --danger: #FF6B5C;
+
+  --font-display: 'Martian Mono', ui-monospace, 'Cascadia Code', monospace;
+  --font-mono: 'Spline Sans Mono', ui-monospace, 'Cascadia Code', monospace;
+
+  --gutter: clamp(20px, 5vw, 72px);
+}
+
+html { font-size: 16px; }
+
+body {
+  background: var(--black);
+  color: var(--white);
+  font-family: var(--font-mono);
+  line-height: 1.55;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+a { color: var(--accent); }
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  padding: 10px 16px;
+  background: var(--panel);
+  z-index: 10;
+}
+.skip:focus { left: 8px; top: 8px; }
+
+/* ── masthead ─────────────────────────────────────────────────────── */
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 20px var(--gutter);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+}
+.brand { font-family: var(--font-display); color: var(--white); text-decoration: none; }
+.brand:hover { color: var(--accent); }
+.crumb { color: var(--faint); }
+
+main {
+  flex: 1;
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: clamp(32px, 6vh, 64px) var(--gutter) 72px;
+}
+
+/* ── intro ────────────────────────────────────────────────────────── */
+
+.intro { max-width: 62ch; margin-bottom: clamp(28px, 5vh, 44px); }
+.intro h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3.6vw, 2.3rem);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.lede { color: var(--mid); margin-top: 14px; font-size: 0.95rem; }
+
+/* ── dropzone ─────────────────────────────────────────────────────── */
+
+.drop {
+  border: 1px dashed #2E2E2E;
+  border-radius: 10px;
+  background: var(--panel);
+  padding: clamp(36px, 8vh, 72px) 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.drop:hover { border-color: #3C3C3C; background: var(--raised); }
+.drop.is-over {
+  border-color: var(--accent);
+  border-style: solid;
+  background: #0E1826;
+}
+.drop-title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.drop-sub { color: var(--mid); margin-top: 10px; font-size: 0.9rem; }
+.drop-meta { color: var(--faint); margin-top: 6px; font-size: 0.78rem; }
+
+/* Once a palette is on the page the uploader steps out of the way. It stays a
+   drop target and stays clickable — it just stops dominating. */
+.drop.is-compact { padding: 16px 20px; }
+.drop.is-compact .drop-title { font-size: 0.85rem; display: inline; }
+.drop.is-compact .drop-sub { display: inline; margin-top: 0; }
+.drop.is-compact .drop-sub::before { content: ' — '; }
+.drop.is-compact .drop-meta { display: none; }
+
+.link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.error {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid #4A1F1B;
+  border-radius: 8px;
+  background: #1A0F0E;
+  color: var(--danger);
+  font-size: 0.86rem;
+}
+
+/* ── result header ────────────────────────────────────────────────── */
+
+.result { margin-top: clamp(28px, 5vh, 44px); }
+
+.source {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.thumb {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--raised);
+  border: 1px solid var(--border);
+}
+
+.field { display: block; }
+.field-label {
+  display: block;
+  font-size: 0.7rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 6px;
+}
+
+.name-input {
+  width: 100%;
+  font-family: var(--font-display);
+  font-size: clamp(1rem, 2.2vw, 1.3rem);
+  font-weight: 600;
+  color: var(--white);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin-left: -8px;
+}
+.name-input:hover { border-color: var(--border); }
+.name-input:focus { border-color: var(--accent); outline: none; }
+
+.stats { color: var(--faint); font-size: 0.78rem; margin-top: 8px; }
+
+.controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.controls input[type="range"] { width: 132px; accent-color: var(--accent); }
+.controls select {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--white);
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.primary, .ghost {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  background: var(--raised);
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.primary { background: var(--accent); border-color: var(--accent); color: #04101F; font-weight: 600; }
+.primary:hover { filter: brightness(1.08); }
+.ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── swatches ─────────────────────────────────────────────────────── */
+
+.swatches {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.swatch {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+}
+
+.chip {
+  background: var(--c);
+  color: var(--ink);
+  min-height: 104px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.85rem;
+  width: 100%;
+  text-align: left;
+}
+.chip:hover .chip-hex { text-decoration: underline; text-underline-offset: 3px; }
+.chip-hex { font-weight: 600; letter-spacing: 0.02em; }
+.chip-share { opacity: 0.72; font-size: 0.75rem; }
+
+.swatch-body { padding: 12px 14px 14px; }
+.swatch-body h3 {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.role {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mid);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.swatch-body dl { margin-top: 10px; display: grid; gap: 3px; }
+.swatch-body dl > div {
+  display: grid;
+  grid-template-columns: 66px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+}
+.swatch-body dt {
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.copyable {
+  font-size: 0.78rem;
+  color: var(--mid);
+  text-align: left;
+  width: 100%;
+  padding: 1px 0;
+  border-radius: 3px;
+}
+.copyable:hover { color: var(--white); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ── exports ──────────────────────────────────────────────────────── */
+
+.exports {
+  margin-top: 28px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.export-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.export-head h2 {
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mid);
+}
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tab {
+  font-size: 0.76rem;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--mid);
+}
+.tab:hover { color: var(--white); border-color: #3A3A3A; }
+.tab[aria-selected="true"] {
+  color: #04101F;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.export-body {
+  margin: 0;
+  padding: 16px;
+  max-height: 340px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--white);
+  background: #0C0C0C;
+  white-space: pre;
+}
+
+.export-actions {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── how it works ─────────────────────────────────────────────────── */
+
+.how { margin-top: clamp(48px, 9vh, 88px); }
+.how h2 {
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.how-grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 24px;
+}
+.how-grid h3 { font-family: var(--font-display); font-size: 0.9rem; font-weight: 600; }
+.how-grid p { color: var(--mid); font-size: 0.85rem; margin-top: 8px; }
+
+/* ── footer + toast ───────────────────────────────────────────────── */
+
+.foot {
+  border-top: 1px solid var(--border);
+  padding: 20px var(--gutter);
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  color: var(--faint);
+  font-size: 0.78rem;
+}
+
+.build { color: #4A4A4A; }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translate(-50%, 12px);
+  padding: 10px 18px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--raised);
+  font-size: 0.82rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+.toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 760px) {
+  .source { grid-template-columns: 72px minmax(0, 1fr); }
+  .thumb { width: 72px; height: 72px; }
+  .controls { grid-column: 1 / -1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; }
+}

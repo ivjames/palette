@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Palette — extract a colour palette from any image</title>
+  <meta name="description" content="Drop in an image and get its dominant colours as hex, RGB, HSL, CSS custom properties and a Tailwind config block. Runs entirely in your browser — nothing is uploaded." />
+  <meta name="color-scheme" content="dark" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@400;600&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/app.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230A0A0A'/%3E%3Ccircle cx='11' cy='12' r='5' fill='%234A9EFF'/%3E%3Ccircle cx='21' cy='12' r='5' fill='%23E36B84'/%3E%3Ccircle cx='16' cy='21' r='5' fill='%23E9B949'/%3E%3C/svg%3E" />
+</head>
+<body>
+
+<a class="skip" href="#drop">Skip to the uploader</a>
+
+<header class="masthead">
+  <a class="brand" href="https://lab980.com">lab980</a>
+  <span class="crumb">/ palette</span>
+</header>
+
+<main>
+  <section class="intro">
+    <h1>Pull the colours out of an image.</h1>
+    <p class="lede">
+      Drop in a photo, screenshot or logo. You get its dominant colours as hex,
+      RGB, HSL, CSS custom properties and a Tailwind block — ready to paste.
+      Extraction happens in this tab: the image never leaves your machine.
+    </p>
+  </section>
+
+  <section id="drop" class="drop" aria-labelledby="drop-title">
+    <div class="drop-inner">
+      <h2 id="drop-title" class="drop-title">Drop an image here</h2>
+      <p class="drop-sub">or <button type="button" class="link" id="pick">choose a file</button>, or paste one from the clipboard</p>
+      <p class="drop-meta">PNG, JPEG, WebP, GIF, AVIF or SVG · up to 25&nbsp;MB</p>
+      <input type="file" id="file" accept="image/*" hidden />
+    </div>
+  </section>
+
+  <p class="error" id="error" role="alert" hidden></p>
+
+  <section class="result" id="result" hidden>
+    <div class="source">
+      <img class="thumb" id="thumb" alt="" />
+      <div class="source-meta">
+        <label class="field">
+          <span class="field-label">Palette name</span>
+          <input class="name-input" id="palette-name" type="text" spellcheck="false" />
+        </label>
+        <p class="stats" id="stats"></p>
+      </div>
+      <div class="controls">
+        <label class="field">
+          <span class="field-label">Colours <output id="count-out">6</output></span>
+          <input type="range" id="count" min="4" max="12" step="1" value="6" />
+        </label>
+        <label class="field">
+          <span class="field-label">Order</span>
+          <select id="sort"></select>
+        </label>
+        <button type="button" class="ghost" id="reset">New image</button>
+      </div>
+    </div>
+
+    <ul class="swatches" id="swatches"></ul>
+
+    <div class="exports">
+      <div class="export-head">
+        <h2>Export</h2>
+        <div class="tabs" id="tabs" role="tablist" aria-label="Export format"></div>
+      </div>
+      <pre class="export-body" id="export-body" tabindex="0"></pre>
+      <div class="export-actions">
+        <button type="button" class="primary" id="copy-export">Copy</button>
+        <button type="button" class="ghost" id="download-export">Download</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="how">
+    <h2>How it works</h2>
+    <div class="how-grid">
+      <div>
+        <h3>Quantization, not sampling</h3>
+        <p>
+          The image is scaled to 256px on its long edge, then reduced with a
+          modified median cut over a 5-bit histogram and refined with k-means in
+          CIE&nbsp;Lab. That is why you get the colours the image is <em>made
+          of</em>, rather than whatever happened to sit under a grid of sample
+          points.
+        </p>
+      </div>
+      <div>
+        <h3>Roles, not just a list</h3>
+        <p>
+          Each colour is scored against the vibrant/muted × light/dark targets,
+          so the swatch you actually want for a heading or a background is
+          labelled rather than left for you to eyeball.
+        </p>
+      </div>
+      <div>
+        <h3>Nothing is uploaded</h3>
+        <p>
+          There is no server side. The page is static files; the pixels are read
+          with the Canvas API in your own browser and are gone when you close
+          the tab.
+        </p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>A <a href="https://lab980.com">lab980</a> tool.</span>
+  <span>Runs entirely client-side. <span class="build" id="build"></span></span>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+  // Rewritten in place by `palette deploy` to the commit it deployed, so the
+  // running page says which commit it is. Left as 'dev' in the repo.
+  const BUILD = 'dev';
+  document.getElementById('build').textContent = BUILD === 'dev' ? '' : `build ${BUILD}`;
+</script>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
