@@ -85,6 +85,39 @@ pairings are worth showing, when two colours count as confusable. The maths it
 leans on (contrast ratio, the CVD matrices) is in `js/color.js`. Keep that split:
 a threshold is a judgement call that gets revised, a matrix is not.
 
+### The confusion criterion, and why it has four conditions
+
+`confusions()` has been wrong three times, each time because a thing that is
+*usually* true got coded as if it were *always* true. Every condition in it is
+there because its absence produced a specific wrong answer. Before loosening
+any of them, check it against the case that put it there:
+
+| condition | the wrong answer without it |
+|---|---|
+| `before >= DISTINCT` (20) | pairs nobody could tell apart anyway |
+| `after <= before * COLLAPSED` (0.5) | greyscale palettes reporting `21 → 21`; simulation cannot touch a neutral, so the pair was never separated and the finding blamed the wrong thing |
+| `after < CONFUSABLE` (25) | pairs still 45 dE apart called confusable |
+| `contrast < RESCUED_BY_LIGHTNESS` (3) | a dark colour and a light one flagged because their hues converged, when lightness tells them apart |
+
+The last one measures the **simulated** colours, not the originals. Dichromatic
+simulation does roughly preserve luminance, which is why the pairing cards
+barely move under it — but "roughly" is not "always", and reading the original
+pair silently drops real findings. `#D10EC1` / `#1D177D` is the case: 3.09:1
+apart normally, 2.13:1 under protanopia, collapsing 55 → 24 dE.
+
+Four cases worth keeping as a regression set, all runnable under plain `node`:
+
+- `#C4483C` / `#468C50` — must report under protanopia and deuteranopia
+- `#DFA96C` / `#B98F2C` — must **not** report; simulation moves it *farther* apart (21 → 23)
+- `#D10EC1` / `#1D177D` — must report; only the simulated contrast reveals it
+- any greyscale palette — must report nothing under all three
+
+One DOM gotcha in the same feature: `<details>` fires `toggle`
+**asynchronously**, so a flag raised around a programmatic `open = …` and
+lowered on the next line is already down when the handler runs. The findings
+group tracks a reader's manual toggle by listening for a click on the
+`<summary>` instead, which a programmatic assignment never dispatches.
+
 `js/palette.js` splits `paletteFromPixels()` out from `extractPalette()` on
 purpose: the first half takes a `Uint8Array` and touches no DOM, so the whole
 colour pipeline can be exercised under plain `node` without a canvas or a
