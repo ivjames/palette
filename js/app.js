@@ -504,11 +504,17 @@ function findingNodes(list) {
 // The findings group opens itself when it has something to say. Once the
 // reader has opened or closed it by hand that judgement is theirs, so the
 // automatic default stops applying until the next image.
+//
+// This listens for a click on the summary rather than for `toggle`. A
+// <details> fires `toggle` asynchronously, so a flag raised around the
+// renderer's own `open = …` is already lowered by the time the event arrives
+// and every automatic open was being recorded as a manual one. A click on the
+// summary is the reader and only the reader — assigning `open` dispatches no
+// click — and keyboard activation of a summary dispatches one too.
 let findingsTouched = false;
-let syncingFindings = false;
 
-el.findingsGroup.addEventListener('toggle', () => {
-  if (!syncingFindings) findingsTouched = true;
+el.findingsGroup.querySelector('summary').addEventListener('click', () => {
+  findingsTouched = true;
 });
 
 function renderA11y() {
@@ -523,11 +529,7 @@ function renderA11y() {
   el.findingsCount.textContent = list.length
     ? `${list.length} pair${list.length === 1 ? '' : 's'}`
     : 'none';
-  if (!findingsTouched) {
-    syncingFindings = true;
-    el.findingsGroup.open = list.length > 0;
-    syncingFindings = false;
-  }
+  if (!findingsTouched) el.findingsGroup.open = list.length > 0;
 
   for (const tab of el.cvdTabs.children) {
     tab.setAttribute('aria-selected', String((tab.dataset.cvd || '') === (state.cvd || '')));
