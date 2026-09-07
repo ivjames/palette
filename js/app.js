@@ -4,6 +4,10 @@
 
 import { extractPalette, SORTS } from './palette.js';
 import { FORMATS, filenameFor, rgbString, hslString, tailwindClass } from './export.js';
+import { CVD_TYPES, simulateCVD, toHex } from './color.js';
+import {
+  againstExtremes, buildCards, resolveCard, confusions, grade, ratioText,
+} from './a11y.js';
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
@@ -21,6 +25,12 @@ const el = {
   sort: document.getElementById('sort'),
   reset: document.getElementById('reset'),
   swatches: document.getElementById('swatches'),
+  cvdTabs: document.getElementById('cvd-tabs'),
+  bwBody: document.getElementById('bw-body'),
+  cards: document.getElementById('cards'),
+  findings: document.getElementById('findings'),
+  findingsGroup: document.getElementById('findings-group'),
+  findingsCount: document.getElementById('findings-count'),
   tabs: document.getElementById('tabs'),
   exportBody: document.getElementById('export-body'),
   copyExport: document.getElementById('copy-export'),
@@ -36,6 +46,7 @@ const state = {
   ordered: [],
   sortKey: 'dominance',
   format: 'css',
+  cvd: null,        // null is normal vision; otherwise a CVD_TYPES key
   renamed: false,
 };
 
@@ -178,6 +189,7 @@ function extract() {
     return false;
   }
   clearError();
+  findingsTouched = false;
   if (!state.renamed) el.name.value = state.palette.name;
   el.result.hidden = false;
   // Shrink the dropzone once there is something to look at — it stays a live
@@ -202,6 +214,7 @@ function render() {
     `· ${state.palette.sampled.toLocaleString()} pixels sampled · ${state.palette.ms} ms`;
 
   el.swatches.replaceChildren(...state.ordered.map(swatchNode));
+  renderA11y();
   renderExport();
 }
 
@@ -267,6 +280,272 @@ function swatchNode(color) {
 
   li.append(chip, body);
   return li;
+}
+
+/* ── contrast and colour vision ──────────────────────────────────────── */
+
+// Pass/fail is never carried by colour alone here — that would be a poor look
+// on this section in particular — so every verdict is a word, and a mark
+// wherever there is a threshold to be on one side of.
+function badgeNode(className, text, title) {
+  const span = document.createElement('span');
+  span.className = `badge ${className}`;
+  span.textContent = text;
+  span.title = title;
+  return span;
+}
+
+// For a check, which has a threshold. Saying "AA Large" next to a cross would
+// be telling the reader they passed and failed at once, so a failure says what
+// it needed instead of what it reached.
+function checkBadge(check) {
+  if (check.advisory) {
+    return badgeNode('is-note', 'Advisory', `${ratioText(check.ratio)} — ${check.advisory}`);
+  }
+  if (!check.pass) {
+    return badgeNode('is-fail', `✕ Needs ${check.need.toFixed(1)}:1`,
+      `${ratioText(check.ratio)} — short of ${check.need.toFixed(1)}:1`);
+  }
+  return badgeNode('is-pass', `✓ ${check.grade || 'Pass'}`,
+    `${ratioText(check.ratio)} — clears ${check.need.toFixed(1)}:1`);
+}
+
+// For a bare ratio, which has no threshold attached: the grade is the whole
+// verdict, so there is no mark to add.
+const GRADE_CLASS = { AAA: 'is-pass', AA: 'is-pass', 'AA Large': 'is-warn', Fail: 'is-fail' };
+function gradeBadge(ratio) {
+  const tier = grade(ratio);
+  return badgeNode(GRADE_CLASS[tier], tier, `${ratioText(ratio)} for normal-size text`);
+}
+
+function shown(rgb) {
+  return state.cvd ? simulateCVD(rgb, state.cvd) : rgb;
+}
+
+function bwRow(color) {
+  const tr = document.createElement('tr');
+  const seen = shown(color.rgb);
+
+  const th = document.createElement('th');
+  th.scope = 'row';
+  const chip = document.createElement('span');
+  chip.className = 'bw-chip';
+  chip.style.background = toHex(seen);
+  const label = document.createElement('span');
+  label.className = 'bw-name';
+  label.textContent = color.name;
+  const hex = document.createElement('span');
+  hex.className = 'bw-hex';
+  hex.textContent = color.hex;
+  th.append(chip, label, hex);
+  tr.append(th);
+
+  const [row] = againstExtremes([{ ...color, rgb: seen }]);
+  for (const ratio of [row.onWhite, row.onBlack]) {
+    const td = document.createElement('td');
+    const value = document.createElement('span');
+    value.className = 'bw-ratio';
+    value.textContent = ratioText(ratio);
+    td.append(value, gradeBadge(ratio));
+    tr.append(td);
+  }
+  return tr;
+}
+
+// One preview per card. Real text at real sizes: the whole point is that the
+// 4.5 and 3.0 thresholds are things you can see rather than read.
+const PREVIEWS = {
+  page: (s) => surface(s.bg, s.fg, [
+    heading('Heading in this palette'),
+    body('Body copy at sixteen pixels, which is the size the 4.5:1 threshold is written for.'),
+    meta('Secondary line — captions, timestamps, help text.', s.meta),
+  ]),
+  'page-dark': (s) => surface(s.bg, s.fg, [
+    heading('Heading in this palette'),
+    body('Body copy at sixteen pixels, which is the size the 4.5:1 threshold is written for.'),
+    meta('Secondary line — captions, timestamps, help text.', s.meta),
+  ]),
+  action: (s) => surface(s.bg, s.body, [
+    body('A control sitting on the page.'),
+    button('Get started', s.fill, s.label),
+  ]),
+  surface: (s) => surface(s.bg, s.fg, [raised(s.surface, s.fg, s.border)]),
+  link: (s) => surface(s.bg, s.fg, [linkLine(s.link)]),
+};
+
+function surface(bg, fg, children) {
+  const div = document.createElement('div');
+  div.className = 'preview';
+  div.style.background = bg.shownHex;
+  div.style.color = fg.shownHex;
+  div.append(...children);
+  return div;
+}
+
+function heading(text) {
+  const p = document.createElement('p');
+  p.className = 'pv-h';
+  p.textContent = text;
+  return p;
+}
+
+function body(text) {
+  const p = document.createElement('p');
+  p.className = 'pv-b';
+  p.textContent = text;
+  return p;
+}
+
+function meta(text, slot) {
+  const p = document.createElement('p');
+  p.className = 'pv-m';
+  p.style.color = slot.shownHex;
+  p.textContent = text;
+  return p;
+}
+
+function button(text, fill, label) {
+  const span = document.createElement('span');
+  span.className = 'pv-btn';
+  span.style.background = fill.shownHex;
+  span.style.color = label.shownHex;
+  span.textContent = text;
+  return span;
+}
+
+function raised(fill, fg, border) {
+  const div = document.createElement('div');
+  div.className = 'pv-card';
+  div.style.background = fill.shownHex;
+  div.style.borderColor = border.shownHex;
+  div.style.color = fg.shownHex;
+  div.append(heading('Card title'), body('Text inside a raised surface, with an edge behind it.'));
+  return div;
+}
+
+function linkLine(link) {
+  const p = document.createElement('p');
+  p.className = 'pv-b';
+  const a = document.createElement('span');
+  a.className = 'pv-link';
+  a.style.color = link.shownHex;
+  a.textContent = 'an inline link';
+  p.append('Prose with ', a, ' in the middle of it, underlined so it does not depend on colour.');
+  return p;
+}
+
+function cardNode(card) {
+  const li = document.createElement('li');
+  li.className = `card ${card.passes ? 'is-pass' : 'is-fail'}`;
+
+  const h4 = document.createElement('h4');
+  h4.textContent = card.title;
+  const note = document.createElement('p');
+  note.className = 'card-note';
+  note.textContent = card.note;
+
+  const checks = document.createElement('ul');
+  checks.className = 'checks';
+  for (const check of card.checks) {
+    const item = document.createElement('li');
+    const name = document.createElement('span');
+    name.className = 'check-label';
+    name.textContent = check.label;
+    const ratio = document.createElement('span');
+    ratio.className = 'check-ratio';
+    ratio.textContent = ratioText(check.ratio);
+    item.append(name, ratio, checkBadge(check));
+    checks.append(item);
+  }
+
+  li.append(h4, note, PREVIEWS[card.id](card.slots), checks);
+  return li;
+}
+
+// Which simulations to report on: the one being previewed, or all three when
+// looking at the palette in normal vision.
+function findingList(colors) {
+  const types = state.cvd ? [state.cvd] : Object.keys(CVD_TYPES);
+  return types.flatMap((type) => confusions(colors, type).map((pair) => ({ type, pair })));
+}
+
+function findingNodes(list) {
+  const items = [];
+  for (const { type, pair } of list) {
+    const li = document.createElement('li');
+    li.className = 'finding';
+    const swatches = document.createElement('span');
+    swatches.className = 'finding-pair';
+    for (const c of [pair.a, pair.b]) {
+      const dot = document.createElement('span');
+      dot.className = 'finding-dot';
+      dot.style.background = toHex(simulateCVD(c.rgb, type));
+      swatches.append(dot);
+    }
+    const text = document.createElement('span');
+    text.textContent =
+      `${CVD_TYPES[type]}: ${pair.a.name} and ${pair.b.name} look alike ` +
+      `(difference ${Math.round(pair.before)} → ${Math.round(pair.after)}, ` +
+      `and only ${ratioText(pair.contrast)} of contrast to separate them).`;
+    li.append(swatches, text);
+    items.push(li);
+  }
+  if (!items.length) {
+    const li = document.createElement('li');
+    li.className = 'finding is-clear';
+    li.textContent = state.cvd
+      ? `No pair in this palette collapses under ${CVD_TYPES[state.cvd].toLowerCase()}.`
+      : 'No pair in this palette collapses under protanopia, deuteranopia or tritanopia.';
+    items.push(li);
+  }
+  return items;
+}
+
+// The findings group opens itself when it has something to say. Once the
+// reader has opened or closed it by hand that judgement is theirs, so the
+// automatic default stops applying until the next image.
+let findingsTouched = false;
+let syncingFindings = false;
+
+el.findingsGroup.addEventListener('toggle', () => {
+  if (!syncingFindings) findingsTouched = true;
+});
+
+function renderA11y() {
+  // The cards read the extraction order rather than the display order, so
+  // changing the sort re-orders the swatches without re-picking the pairings.
+  const source = state.palette.colors;
+  el.bwBody.replaceChildren(...state.ordered.map(bwRow));
+  el.cards.replaceChildren(...buildCards(source).map((card) => cardNode(resolveCard(card, state.cvd))));
+
+  const list = findingList(source);
+  el.findings.replaceChildren(...findingNodes(list));
+  el.findingsCount.textContent = list.length
+    ? `${list.length} pair${list.length === 1 ? '' : 's'}`
+    : 'none';
+  if (!findingsTouched) {
+    syncingFindings = true;
+    el.findingsGroup.open = list.length > 0;
+    syncingFindings = false;
+  }
+
+  for (const tab of el.cvdTabs.children) {
+    tab.setAttribute('aria-selected', String((tab.dataset.cvd || '') === (state.cvd || '')));
+  }
+}
+
+function renderCvdTabs() {
+  const options = [['', 'Normal vision'], ...Object.entries(CVD_TYPES)];
+  el.cvdTabs.replaceChildren(...options.map(([id, label]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.role = 'tab';
+    button.className = 'tab';
+    button.textContent = label;
+    button.dataset.cvd = id;
+    button.setAttribute('aria-selected', String(id === (state.cvd || '')));
+    return button;
+  }));
 }
 
 function renderTabs() {
@@ -355,6 +634,13 @@ el.reset.addEventListener('click', () => {
   el.file.click();
 });
 
+el.cvdTabs.addEventListener('click', (event) => {
+  const tab = event.target.closest('[data-cvd]');
+  if (!tab || !state.palette) return;
+  state.cvd = tab.dataset.cvd || null;
+  renderA11y();
+});
+
 el.tabs.addEventListener('click', (event) => {
   const tab = event.target.closest('[data-format]');
   if (!tab) return;
@@ -396,4 +682,5 @@ el.sort.replaceChildren(...Object.entries(SORTS).map(([id, sort]) => {
 }));
 el.sort.value = state.sortKey;
 el.countOut.value = el.count.value;
+renderCvdTabs();
 renderTabs();

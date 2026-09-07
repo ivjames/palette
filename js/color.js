@@ -115,3 +115,66 @@ export function readableInk(rgb) {
   const onWhite = contrastRatio(rgb, { r: 255, g: 255, b: 255 });
   return onBlack >= onWhite ? '#000000' : '#FFFFFF';
 }
+
+// Linear light -> sRGB, the inverse of linearize(). Anything that does its
+// arithmetic in linear space needs this to hand a colour back to the page.
+function delinearize(c) {
+  const cn = clamp(c, 0, 1);
+  const v = cn <= 0.0031308 ? cn * 12.92 : 1.055 * Math.pow(cn, 1 / 2.4) - 0.055;
+  return Math.round(v * 255);
+}
+
+// Colour vision deficiency simulation: Machado, Oliveira & Fischer (2009),
+// which reduces each type to a single 3x3 applied in *linear* RGB. Every row
+// sums to 1, which is what keeps a neutral mapping to itself — a useful
+// self-check if these numbers are ever edited.
+//
+// The tabulated matrices below are the severity-1.0 (dichromatic) ones. The
+// `severity` argument interpolates toward the identity matrix, which is an
+// approximation of Machado's own tabulated intermediate matrices rather than
+// those values; it is close enough for a preview and the UI only uses 1.0.
+const CVD_MATRICES = {
+  protanopia: [
+    [ 0.152286,  1.052583, -0.204868],
+    [ 0.114503,  0.786281,  0.099216],
+    [-0.003882, -0.048116,  1.051998],
+  ],
+  deuteranopia: [
+    [ 0.367322,  0.860646, -0.227968],
+    [ 0.280085,  0.672501,  0.047413],
+    [-0.011820,  0.042940,  0.968881],
+  ],
+  tritanopia: [
+    [ 1.255528, -0.076749, -0.178779],
+    [-0.078411,  0.930809,  0.147602],
+    [ 0.004733,  0.691367,  0.303900],
+  ],
+};
+
+export const CVD_TYPES = {
+  protanopia: 'Protanopia',
+  deuteranopia: 'Deuteranopia',
+  tritanopia: 'Tritanopia',
+};
+
+/**
+ * @param {{r:number,g:number,b:number}} rgb
+ * @param {string|null} type one of CVD_TYPES' keys, or null for no change
+ * @param {number} severity 0 (normal vision) to 1 (dichromacy)
+ */
+export function simulateCVD(rgb, type, severity = 1) {
+  const m = CVD_MATRICES[type];
+  const s = clamp(severity, 0, 1);
+  if (!m || s === 0) return { r: rgb.r, g: rgb.g, b: rgb.b };
+  const lin = [linearize(rgb.r), linearize(rgb.g), linearize(rgb.b)];
+  const out = [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    let acc = 0;
+    for (let j = 0; j < 3; j++) {
+      const identity = i === j ? 1 : 0;
+      acc += (identity + (m[i][j] - identity) * s) * lin[j];
+    }
+    out[i] = acc;
+  }
+  return { r: delinearize(out[0]), g: delinearize(out[1]), b: delinearize(out[2]) };
+}

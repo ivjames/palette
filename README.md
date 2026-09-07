@@ -17,8 +17,12 @@ tab and are gone when you close it.
   labelled with its vibrant/muted × light/dark role
 - The palette itself named from its own colours ("Cobalt Bloom"), editable
 - Copy or download as a hex list, plain text, CSS custom properties, a
-  Tailwind v3 config fragment, a Tailwind v4 `@theme` block, or JSON
+  Tailwind v3 config fragment, a Tailwind v4 `@theme` block, JSON, or an
+  accessibility read-out
 - Sort by dominance, hue, lightness or saturation
+- WCAG contrast against black and white, five rendered pairings you would
+  plausibly ship, and a protanopia/deuteranopia/tritanopia simulation over
+  all of it
 
 ## How the extraction works
 
@@ -31,6 +35,29 @@ pixel need match; k-means alone depends entirely on how it was seeded.
 Colour naming is a nearest-match in Lab against a hand-written reference table,
 with a modifier prefix describing the offset. Role assignment scores each
 swatch against the vibrant/muted saturation and lightness targets.
+
+## How the accessibility check works
+
+Contrast is a property of a *pair*, so no swatch is given a WCAG level on its
+own. What the page shows instead is each colour against the two extremes, and
+five pairings committed to specific swatches — page, dark page, primary action,
+raised surface, link — rendered at the text sizes the 4.5:1 and 3:1 thresholds
+are written against. One number is reported without gating its card: a link's
+contrast against the prose around it is technique G183, which applies where
+colour alone identifies the link, and the preview underlines it. A pairing that cannot reach its threshold is still shown,
+failing: that a palette has no usable body text is the finding, not a reason to
+hide the card.
+
+Colour vision deficiency is simulated with the Machado, Oliveira & Fischer
+(2009) matrices, applied in linear RGB. This is a separate question from
+contrast rather than a second contrast pass: dichromatic simulation roughly
+preserves luminance, so ratios barely move while hue differences collapse. A
+pair is only reported as confusable when it starts clearly distinct, loses at
+least half that difference to the simulation, ends up close in Lab, *and* has
+under 3:1 of contrast. Each condition excludes a different false positive: two
+near-identical greys are untouched by any of the matrices, so reporting them
+would blame the simulation for a palette that never separated them, and above
+3:1 the pair is tellable apart on lightness whatever happens to hue.
 
 ## Running it locally
 
