@@ -411,7 +411,10 @@ main {
 .cards {
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  /* min() rather than a bare 280px: inside the panel's padding a 320px
+     viewport leaves 248px, and a fixed minimum track would push the cards out
+     of the panel and scroll the whole page sideways. */
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
   gap: 14px;
 }
 

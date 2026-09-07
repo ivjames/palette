@@ -23,12 +23,22 @@ export const NEEDS = {
   nonText: 3,       // borders, icons, the edge of a control
 };
 
-export function round(ratio) {
-  return Math.round(ratio * 100) / 100;
+// Ratios are truncated, never rounded. A displayed "4.50:1" beside a failure
+// verdict is a contradiction, and 4.4983:1 — #777777 on #070707 — rounds into
+// exactly that. Truncating always understates, which is the safe direction for
+// a threshold.
+//
+// The epsilon is not decoration: 1.13 * 100 is 112.99999999999999 in binary
+// floating point, and a bare floor would report an exact 1.13 as 1.12. It is
+// far smaller than the 0.01 it protects, so it cannot promote a real value
+// across a boundary.
+export function truncate(ratio, places = 2) {
+  const scale = 10 ** places;
+  return Math.floor(ratio * scale + 1e-9) / scale;
 }
 
 export function ratioText(ratio) {
-  return `${round(ratio).toFixed(2)}:1`;
+  return `${truncate(ratio).toFixed(2)}:1`;
 }
 
 /**

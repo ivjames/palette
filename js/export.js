@@ -7,7 +7,7 @@
 import { CVD_TYPES } from './color.js';
 import {
   againstExtremes, pairMatrix, buildCards, resolveCard, confusions,
-  grade, ratioText, round,
+  grade, ratioText, truncate,
 } from './a11y.js';
 
 export function rgbString({ r, g, b }) {
@@ -102,7 +102,7 @@ export function toAccessibility(palette, source) {
   const label = (i) => String(i + 1).padStart(2);
   lines.push(`  ${' '.repeat(9 + nameWidth)}${colors.map((_, i) => label(i).padStart(6)).join('')}`);
   pairMatrix(colors).forEach((row, i) => {
-    const cells = row.against.map((r) => (r === null ? '     —' : round(r).toFixed(1).padStart(6))).join('');
+    const cells = row.against.map((r) => (r === null ? '     —' : truncate(r, 1).toFixed(1).padStart(6))).join('');
     lines.push(`  ${label(i)} ${row.color.hex} ${row.color.name.padEnd(nameWidth)}${cells}`);
   });
 
