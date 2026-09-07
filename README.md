@@ -23,6 +23,9 @@ tab and are gone when you close it.
 - WCAG contrast against black and white, five rendered pairings you would
   plausibly ship, and a protanopia/deuteranopia/tritanopia simulation over
   all of it
+- Two ways out of a failing pairing: press the red verdict to boost the colour
+  to spec, or take one of the spare colours the assessment says would carry
+  that slot
 
 ## How the extraction works
 
@@ -47,6 +50,15 @@ contrast against the prose around it is technique G183, which applies where
 colour alone identifies the link, and the preview underlines it. A pairing that cannot reach its threshold is still shown,
 failing: that a palette has no usable body text is the finding, not a reason to
 hide the card.
+
+A failing verdict is also a button. Pressing it walks that colour along
+lightness — hue and chroma held, chroma eased only if lightness alone cannot
+get there — to the nearest colour that clears the threshold, and redraws the
+preview in it. The result is not one of the extracted colours and the card says
+so. The alternative remedy needs no new colour: every swatch the five pairings
+do not place, which is what asking for more colours produces, is tried in every
+slot they do use and reported with the slots it can carry, the ones that repair
+a failing check first.
 
 Colour vision deficiency is simulated with the Machado, Oliveira & Fischer
 (2009) matrices, applied in linear RGB. This is a separate question from

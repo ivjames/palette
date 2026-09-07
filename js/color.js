@@ -124,6 +124,32 @@ function delinearize(c) {
   return Math.round(v * 255);
 }
 
+/**
+ * Lab -> sRGB, the inverse of rgbToLab(). Out-of-gamut results clamp per
+ * channel rather than failing: a colour pushed to an extreme lightness while
+ * holding its chroma often leaves the cube, and a clamped colour is still a
+ * colour you can measure honestly. Anything that cares about the difference
+ * should re-measure the result rather than trust the Lab it asked for.
+ */
+export function labToRgb({ L, a, b }) {
+  const fy = (L + 16) / 116;
+  const fx = fy + a / 500;
+  const fz = fy - b / 200;
+  const finv = (t) => {
+    const t3 = t * t * t;
+    return t3 > 216 / 24389 ? t3 : (t * 116 - 16) * 27 / 24389;
+  };
+  const x = finv(fx) * 0.95047;
+  const y = finv(fy) * 1.00000;
+  const z = finv(fz) * 1.08883;
+  // Inverse of the sRGB D65 matrix in rgbToLab().
+  return {
+    r: delinearize(x *  3.2404542 + y * -1.5371385 + z * -0.4985314),
+    g: delinearize(x * -0.9692660 + y *  1.8760108 + z *  0.0415560),
+    b: delinearize(x *  0.0556434 + y * -0.2040259 + z *  1.0572252),
+  };
+}
+
 // Colour vision deficiency simulation: Machado, Oliveira & Fischer (2009),
 // which reduces each type to a single 3x3 applied in *linear* RGB. Every row
 // sums to 1, which is what keeps a neutral mapping to itself — a useful

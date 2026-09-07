@@ -6,7 +6,8 @@ import { extractPalette, SORTS } from './palette.js';
 import { FORMATS, filenameFor, rgbString, hslString, tailwindClass } from './export.js';
 import { CVD_TYPES, simulateCVD, toHex } from './color.js';
 import {
-  againstExtremes, buildCards, resolveCard, confusions, grade, ratioText,
+  againstExtremes, buildCards, resolveCard, withBoosts, confusions, alternatives,
+  grade, ratioText,
 } from './a11y.js';
 
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -28,6 +29,9 @@ const el = {
   cvdTabs: document.getElementById('cvd-tabs'),
   bwBody: document.getElementById('bw-body'),
   cards: document.getElementById('cards'),
+  alts: document.getElementById('alts'),
+  altsGroup: document.getElementById('alts-group'),
+  altsCount: document.getElementById('alts-count'),
   findings: document.getElementById('findings'),
   findingsGroup: document.getElementById('findings-group'),
   findingsCount: document.getElementById('findings-count'),
@@ -48,6 +52,11 @@ const state = {
   format: 'css',
   cvd: null,        // null is normal vision; otherwise a CVD_TYPES key
   renamed: false,
+  // Which checks the reader has asked to boost, as cardId -> Set of check
+  // index. Held here rather than on the card because a card is rebuilt from
+  // scratch on every render — changing the simulation, or the sort, or nothing
+  // at all — and a toggle the reader pressed should survive all three.
+  boosts: new Map(),
 };
 
 /* ── chrome ──────────────────────────────────────────────────────────── */
@@ -189,7 +198,12 @@ function extract() {
     return false;
   }
   clearError();
-  findingsTouched = false;
+  findingsOpener.touched = false;
+  altsOpener.touched = false;
+  // A boost is a decision about one colour against one background, and neither
+  // survives a new extraction — the same check index on the same card is a
+  // different pair of colours now.
+  state.boosts.clear();
   if (!state.renamed) el.name.value = state.palette.name;
   el.result.hidden = false;
   // Shrink the dropzone once there is something to look at — it stays a live
@@ -202,7 +216,38 @@ function extract() {
 /* ── rendering ───────────────────────────────────────────────────────── */
 
 function paletteForExport() {
-  return { ...state.palette, name: el.name.value.trim() || state.palette.name, colors: state.ordered };
+  return {
+    ...state.palette,
+    name: el.name.value.trim() || state.palette.name,
+    colors: state.ordered,
+    // The listings follow the reader's chosen order; the pairings and
+    // everything hanging off them are the palette's own property and follow the
+    // extraction order, which is the order the cards on screen were built from.
+    analysed: state.palette.colors,
+    boosts: appliedBoosts(),
+  };
+}
+
+// The boosts that are switched on, resolved to the colours they actually put on
+// screen, keyed by card and slot.
+//
+// The export gets these rather than the check indices that produced them. A
+// boost chosen on a simulation tab is often repairing a check that already
+// passes in normal vision — a red button label under protanopia reads 5.25:1
+// with no simulation — so re-deriving it from the indices under normal vision
+// found nothing to do and dropped the boost from the export entirely, while it
+// was still on screen in front of the reader writing the ticket.
+function appliedBoosts() {
+  const out = new Map();
+  if (!state.boosts.size) return out;
+  for (const card of buildCards(state.palette.colors)) {
+    const chosen = state.boosts.get(card.id);
+    if (!chosen || !chosen.size) continue;
+    const resolved = resolveCard(card, state.cvd, chosen, false);
+    if (!resolved.boosts.length) continue;
+    out.set(card.id, new Map(resolved.boosts.map((b) => [b.slot, { ...b, under: state.cvd }])));
+  }
+  return out;
 }
 
 function render() {
@@ -218,7 +263,7 @@ function render() {
   renderExport();
 }
 
-function copyButton(label, value, what) {
+function copyButton(value, what) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'copyable';
@@ -234,7 +279,7 @@ function row(term, value, what) {
   const dt = document.createElement('dt');
   dt.textContent = term;
   const dd = document.createElement('dd');
-  dd.append(copyButton(term, value, what));
+  dd.append(copyButton(value, what));
   div.append(dt, dd);
   return div;
 }
@@ -295,16 +340,62 @@ function badgeNode(className, text, title) {
   return span;
 }
 
+// The same shape as a badge, but pressable: a verdict the reader can act on
+// rather than only read.
+function toggleNode(className, text, title, key, pressed) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `badge badge-toggle ${className}`;
+  button.textContent = text;
+  button.title = title;
+  button.dataset.boost = key;
+  button.setAttribute('aria-pressed', String(pressed));
+  return button;
+}
+
 // For a check, which has a threshold. Saying "AA Large" next to a cross would
 // be telling the reader they passed and failed at once, so a failure says what
 // it needed instead of what it reached.
-function checkBadge(check) {
+//
+// A failure with a way out is the toggle: the badge stops being a verdict and
+// becomes the control that applies it. A failure without one — no colour of any
+// lightness clears 7:1 against a mid grey — stays a plain badge and says so,
+// because a button that cannot do anything is worse than no button.
+function checkBadge(check, cardId) {
   if (check.advisory) {
     return badgeNode('is-note', 'Advisory', `${ratioText(check.ratio)} — ${check.advisory}`);
   }
+  const { boost } = check;
+  const key = `${cardId}:${check.index}`;
+  if (boost && boost.applied) {
+    // Never read from `applied` alone. Two checks can move the same slot, and
+    // where no one colour satisfies both, the reader's own request wins and
+    // this one is left short — a badge that said "boosted" over a ratio under
+    // its threshold would be the failure this whole section exists to surface.
+    if (check.pass) {
+      return toggleNode('is-pass', `✓ Boosted ${check.grade || ''}`.trim(),
+        `${ratioText(check.ratio)} with ${boost.to} in the ${boost.slotLabel.toLowerCase()} slot. ` +
+        `Press again to put ${boost.from} back.`,
+        key, true);
+    }
+    return toggleNode('is-fail', `✕ Needs ${check.need.toFixed(1)}:1`,
+      `${ratioText(check.ratio)} — ${boost.to} could not clear this and the other check on ` +
+      `the same colour at once. Press again to put ${boost.from} back.`,
+      key, true);
+  }
   if (!check.pass) {
-    return badgeNode('is-fail', `✕ Needs ${check.need.toFixed(1)}:1`,
-      `${ratioText(check.ratio)} — short of ${check.need.toFixed(1)}:1`);
+    if (!boost) {
+      return badgeNode('is-fail', `✕ Needs ${check.need.toFixed(1)}:1`,
+        `${ratioText(check.ratio)} — short of ${check.need.toFixed(1)}:1, and boosting ` +
+        `cannot reach it here.`);
+    }
+    // The notice keeps its wording. It is the same verdict it always was; what
+    // changed is that it now does something, and the arrow and the fill are
+    // enough to say so without stealing the width the verdict needs.
+    return toggleNode('is-fail', `✕ Needs ${check.need.toFixed(1)}:1`,
+      `${ratioText(check.ratio)} — short of ${check.need.toFixed(1)}:1. ` +
+      `Press to move ${boost.name} to ${boost.to}, which clears it.`,
+      key, false);
   }
   return badgeNode('is-pass', `✓ ${check.grade || 'Pass'}`,
     `${ratioText(check.ratio)} — clears ${check.need.toFixed(1)}:1`);
@@ -434,9 +525,29 @@ function linkLine(link) {
   return p;
 }
 
+// Says, on the row under the check it belongs to, exactly what the boost put on
+// screen. The preview above is no longer drawn in the extracted palette once a
+// boost is on, and leaving that unsaid would have the reader copy a set of
+// colours that does not match what they were looking at.
+function boostNote(boost) {
+  const p = document.createElement('p');
+  p.className = 'check-boost';
+  const dot = document.createElement('span');
+  dot.className = 'boost-dot';
+  dot.style.background = boost.to;
+  const text = document.createElement('span');
+  text.textContent =
+    `${boost.name} moved ${Math.round(boost.delta)} ΔE` +
+    `${boost.hueKept ? ', hue and chroma kept' : ', chroma eased to reach it'}` +
+    ' — not one of the extracted colours.';
+  p.append(dot, copyButton(boost.to, `${boost.to}, the boosted colour`), text);
+  return p;
+}
+
 function cardNode(card) {
   const li = document.createElement('li');
   li.className = `card ${card.passes ? 'is-pass' : 'is-fail'}`;
+  if (card.boosts.length) li.classList.add('is-boosted');
 
   const h4 = document.createElement('h4');
   h4.textContent = card.title;
@@ -446,19 +557,87 @@ function cardNode(card) {
 
   const checks = document.createElement('ul');
   checks.className = 'checks';
+  // Two checks sharing a slot share the one boost that moved it, so the note
+  // goes under the first of them rather than under each.
+  const noted = new Set();
   for (const check of card.checks) {
     const item = document.createElement('li');
+    const line = document.createElement('div');
+    line.className = 'check-line';
     const name = document.createElement('span');
     name.className = 'check-label';
     name.textContent = check.label;
     const ratio = document.createElement('span');
     ratio.className = 'check-ratio';
     ratio.textContent = ratioText(check.ratio);
-    item.append(name, ratio, checkBadge(check));
+    line.append(name, ratio, checkBadge(check, card.id));
+    item.append(line);
+    if (check.boost && check.boost.applied && !noted.has(check.boost.slot)) {
+      noted.add(check.boost.slot);
+      item.append(boostNote(check.boost));
+    }
     checks.append(item);
   }
 
   li.append(h4, note, PREVIEWS[card.id](card.slots), checks);
+  return li;
+}
+
+/* ── the rest of the palette, assessed ───────────────────────────────── */
+
+function altNode(entry) {
+  const li = document.createElement('li');
+  li.className = 'alt';
+
+  const head = document.createElement('div');
+  head.className = 'alt-head';
+  const dot = document.createElement('span');
+  dot.className = 'alt-dot';
+  dot.style.background = toHex(shown(entry.color.rgb));
+  const name = document.createElement('span');
+  name.className = 'alt-name';
+  name.textContent = entry.color.name;
+  const hex = document.createElement('span');
+  hex.className = 'alt-hex';
+  hex.textContent = entry.color.hex;
+  head.append(dot, name, hex);
+  li.append(head);
+
+  if (!entry.placements.length) {
+    const none = document.createElement('p');
+    none.className = 'alt-none';
+    none.textContent = 'No slot in the pairings above at the ratio that slot needs.';
+    li.append(none);
+    return li;
+  }
+
+  const list = document.createElement('ul');
+  list.className = 'alt-list';
+  for (const place of entry.placements) {
+    const item = document.createElement('li');
+    const where = document.createElement('span');
+    where.className = 'alt-where';
+    where.textContent = `${place.cardTitle} · ${place.slotLabel}`;
+    const ratio = document.createElement('span');
+    ratio.className = 'check-ratio';
+    // The weakest of the checks this swap touches, because that is the one that
+    // decides whether the swap is usable at all.
+    ratio.textContent = ratioText(Math.min(...place.checks.map((c) => c.ratio)));
+    const detail = place.checks
+      .map((c) => `${c.label} ${ratioText(c.ratio)} against ${c.need.toFixed(1)}:1`)
+      .join('; ');
+    // Only a repair earns a badge. "Also works" on every other row would put a
+    // chip beside thirty facts that are all the same fact, and bury the one
+    // row that is not — so the plain rows carry their ratio and their tooltip
+    // and nothing else.
+    item.title = detail;
+    item.append(where, ratio);
+    if (place.fixes) {
+      item.append(badgeNode('is-pass', '✓ Fixes', `Repairs ${place.fixed.join(' and ')}. ${detail}`));
+    }
+    list.append(item);
+  }
+  li.append(list);
   return li;
 }
 
@@ -501,9 +680,9 @@ function findingNodes(list) {
   return items;
 }
 
-// The findings group opens itself when it has something to say. Once the
-// reader has opened or closed it by hand that judgement is theirs, so the
-// automatic default stops applying until the next image.
+// Two groups open themselves when they have something to say. Once the reader
+// has opened or closed one by hand that judgement is theirs, so the automatic
+// default stops applying to it until the next image.
 //
 // This listens for a click on the summary rather than for `toggle`. A
 // <details> fires `toggle` asynchronously, so a flag raised around the
@@ -511,25 +690,45 @@ function findingNodes(list) {
 // and every automatic open was being recorded as a manual one. A click on the
 // summary is the reader and only the reader — assigning `open` dispatches no
 // click — and keyboard activation of a summary dispatches one too.
-let findingsTouched = false;
+function autoOpener(details) {
+  const opener = {
+    touched: false,
+    apply(wanted) { if (!opener.touched) details.open = wanted; },
+  };
+  details.querySelector('summary').addEventListener('click', () => { opener.touched = true; });
+  return opener;
+}
 
-el.findingsGroup.querySelector('summary').addEventListener('click', () => {
-  findingsTouched = true;
-});
+const findingsOpener = autoOpener(el.findingsGroup);
+const altsOpener = autoOpener(el.altsGroup);
 
 function renderA11y() {
   // The cards read the extraction order rather than the display order, so
   // changing the sort re-orders the swatches without re-picking the pairings.
   const source = state.palette.colors;
+  const cards = buildCards(source);
   el.bwBody.replaceChildren(...state.ordered.map(bwRow));
-  el.cards.replaceChildren(...buildCards(source).map((card) => cardNode(resolveCard(card, state.cvd))));
+  el.cards.replaceChildren(...cards.map((card) => (
+    cardNode(resolveCard(card, state.cvd, state.boosts.get(card.id)))
+  )));
+
+  // Assessed against the simulation in force, not against normal vision: a
+  // colour that carries a slot for everyone else is not an alternative for the
+  // reader whose tab this is.
+  const alts = alternatives(cards, source, state.cvd);
+  el.alts.replaceChildren(...alts.map(altNode));
+  el.altsCount.textContent = alts.length
+    ? `${alts.length} spare colour${alts.length === 1 ? '' : 's'}`
+    : 'none spare';
+  // Only worth opening on its own account when one of them repairs something.
+  altsOpener.apply(alts.some((a) => a.placements.some((p) => p.fixes)));
 
   const list = findingList(source);
   el.findings.replaceChildren(...findingNodes(list));
   el.findingsCount.textContent = list.length
     ? `${list.length} pair${list.length === 1 ? '' : 's'}`
     : 'none';
-  if (!findingsTouched) el.findingsGroup.open = list.length > 0;
+  findingsOpener.apply(list.length > 0);
 
   for (const tab of el.cvdTabs.children) {
     tab.setAttribute('aria-selected', String((tab.dataset.cvd || '') === (state.cvd || '')));
@@ -641,6 +840,24 @@ el.cvdTabs.addEventListener('click', (event) => {
   if (!tab || !state.palette) return;
   state.cvd = tab.dataset.cvd || null;
   renderA11y();
+});
+
+el.cards.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-boost]');
+  if (!button || !state.palette) return;
+  const key = button.dataset.boost;
+  const [cardId, index] = [key.slice(0, key.lastIndexOf(':')), Number(key.slice(key.lastIndexOf(':') + 1))];
+  const applied = state.boosts.get(cardId) || new Set();
+  if (applied.has(index)) applied.delete(index);
+  else applied.add(index);
+  state.boosts.set(cardId, applied);
+  renderA11y();
+  renderExport();
+  // The whole section is rebuilt, so the button that was just pressed is gone
+  // along with the focus that was on it. Put focus back on its replacement —
+  // otherwise a keyboard reader toggling a boost is returned to the top of the
+  // document and has to walk back down to see what changed.
+  el.cards.querySelector(`[data-boost="${key}"]`)?.focus();
 });
 
 el.tabs.addEventListener('click', (event) => {

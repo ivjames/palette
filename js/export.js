@@ -6,8 +6,8 @@
 
 import { CVD_TYPES } from './color.js';
 import {
-  againstExtremes, pairMatrix, buildCards, resolveCard, confusions,
-  grade, ratioText, truncate,
+  againstExtremes, pairMatrix, buildCards, resolveCard, withBoosts, confusions,
+  alternatives, grade, ratioText, truncate,
 } from './a11y.js';
 
 export function rgbString({ r, g, b }) {
@@ -86,6 +86,19 @@ export function toTailwindV4(palette) {
 // the page because a grid of n^2 ratios is a reference, not a decision.
 export function toAccessibility(palette, source) {
   const colors = palette.colors;
+  // The pairings, the alternatives and the colour-vision findings are
+  // properties of the palette rather than of the order it happens to be shown
+  // in, so they are computed over the extraction order — which is what the
+  // page's own cards use, and what any boost the reader has switched on is
+  // keyed to. The listings follow the reader's chosen order, because a listing
+  // is a listing.
+  const analysed = palette.analysed || colors;
+  // Concrete colours by card and slot, not the check indices they came from —
+  // see appliedBoosts() in app.js for why the indices could not survive the
+  // trip. Everything below still reports normal-vision ratios; a boost chosen
+  // under a simulation is a colour the design now holds, and this is what that
+  // colour measures for everyone else.
+  const boosts = palette.boosts || new Map();
   const lines = [`${header(palette, source)} — accessibility`, ''];
 
   lines.push('Against white and black');
@@ -107,24 +120,64 @@ export function toAccessibility(palette, source) {
   });
 
   lines.push('', 'Likely pairings');
-  for (const card of buildCards(colors)) {
-    const resolved = resolveCard(card, null);
+  const cards = buildCards(analysed);
+  for (const card of cards) {
+    const applied = boosts.get(card.id);
+    const resolved = resolveCard(withBoosts(card, applied), null);
     const slots = Object.entries(resolved.slots)
       .map(([name, s]) => `${name} ${s.hex}`)
       .join(', ');
     lines.push(`  ${resolved.title} — ${slots}`);
+    for (const boost of applied ? applied.values() : []) {
+      lines.push(
+        `      boosted: ${boost.slotLabel} ${boost.from} -> ${boost.to} ` +
+        `(dE ${Math.round(boost.delta)}${boost.hueKept ? '' : ', chroma eased'}` +
+        `${boost.under ? `, chosen under ${boost.under}` : ''}) — ` +
+        'not one of the extracted colours',
+      );
+    }
     for (const check of resolved.checks) {
       const verdict = check.advisory
         ? `advisory — ${check.advisory}`
         : `needs ${check.need.toFixed(1)}  ${check.pass ? 'pass' : 'FAILS'}${check.grade ? `  ${check.grade}` : ''}`;
       lines.push(`    ${check.label.padEnd(22)}${ratioText(check.ratio).padStart(8)}  ${verdict}`);
+      // A failure the reader can do something about is worth carrying into the
+      // ticket with the remedy attached.
+      const { boost } = check;
+      if (!boost) continue;
+      lines.push(
+        `      boost:   ${boost.slotLabel} ${boost.from} -> ${boost.to} ` +
+        `(dE ${Math.round(boost.delta)}${boost.hueKept ? '' : ', chroma eased'}) ` +
+        `would clear ${check.need.toFixed(1)}`,
+      );
+    }
+  }
+
+  lines.push('', 'Alternatives from the rest of the palette');
+  const alts = alternatives(cards, analysed, null);
+  if (!alts.length) {
+    lines.push('  Every colour is placed in a pairing above.');
+  }
+  for (const { color, placements } of alts) {
+    lines.push(`  ${color.hex}  ${color.name}`);
+    if (!placements.length) {
+      lines.push('    nothing in the pairings above it can carry');
+      continue;
+    }
+    for (const place of placements) {
+      const where = `${place.cardTitle} / ${place.slotLabel}`;
+      const weakest = place.checks.reduce((lo, c) => Math.min(lo, c.ratio), Infinity);
+      lines.push(
+        `    ${where.padEnd(34)}${ratioText(weakest).padStart(8)}  ` +
+        `${place.fixes ? `fixes ${place.fixed.join(', ')}` : 'also works'}`,
+      );
     }
   }
 
   lines.push('', 'Colour vision');
   let found = false;
   for (const [type, typeLabel] of Object.entries(CVD_TYPES)) {
-    for (const pair of confusions(colors, type)) {
+    for (const pair of confusions(analysed, type)) {
       found = true;
       lines.push(
         `  ${typeLabel}: ${pair.a.name} and ${pair.b.name} become hard to tell apart ` +

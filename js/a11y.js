@@ -8,7 +8,7 @@
 // which is why they live here and not in color.js.
 
 import {
-  contrastRatio, relativeLuminance, rgbToLab, labDistance,
+  clamp, contrastRatio, relativeLuminance, rgbToLab, labToRgb, labDistance,
   simulateCVD, toHex, readableInk,
 } from './color.js';
 
@@ -119,6 +119,74 @@ export function confusions(colors, type) {
   return out.sort((x, y) => x.after - y.after);
 }
 
+/* ── boosting a colour to spec ────────────────────────────────────────── */
+
+// How far each probe moves the colour along L*, and how much chroma it is
+// willing to give up when lightness alone cannot get there.
+//
+// Holding a* and b* fixed while L* moves keeps both the hue angle and the
+// chroma of the original, which is the whole point: a boost should read as the
+// same colour, lighter or darker, not as a different one. But a saturated
+// colour driven toward either end of the L* range leaves the sRGB cube, and a
+// clamped conversion can plateau short of the threshold — so the chroma scales
+// are the fallback, tried in order, and the first one that reaches the target
+// wins. Reaching for 0.75 before 0.5 is not cosmetic: each step costs hue
+// purity, so the search spends the least it can.
+const BOOST_STEP = 0.5;
+const CHROMA_SCALES = [1, 0.75, 0.5, 0.25, 0];
+
+/**
+ * The nearest colour to `rgb` — along lightness first, chroma only if it must —
+ * that `measure` scores at or above `need`.
+ *
+ * `measure` takes a candidate colour and returns the ratio the check would
+ * report with that candidate in place. Passing the measurement in rather than a
+ * background is what lets a derived slot be boosted through its source: the
+ * "button label" check moves the *fill* and re-derives the ink from it, so what
+ * is measured is the pair the reader sees, not the pair the slot names.
+ *
+ * Every candidate is measured after the round trip through sRGB, so a colour
+ * clamped back into gamut is judged on what it actually became. Returns null
+ * when nothing in sRGB reaches `need` against that background — which is a real
+ * answer for a mid-tone background and a 7:1 target, not a failure to search.
+ *
+ * @returns {{rgb:object, hex:string, delta:number, hueKept:boolean}|null}
+ */
+export function boostToward(rgb, need, measure) {
+  if (measure(rgb) >= need) return null;
+  const lab = rgbToLab(rgb);
+  // Clamped, because the conversion does not land exactly on the ends: white
+  // comes back as L* 100.0000039, and a walk starting there and stepping *down*
+  // used to be cut off by its own range guard before its first step — every
+  // boost from a white or near-white slot silently reported "unreachable".
+  const start = clamp(lab.L, 0, 100);
+  for (const scale of CHROMA_SCALES) {
+    const a = lab.a * scale;
+    const b = lab.b * scale;
+    let best = null;
+    for (const dir of [-1, 1]) {
+      for (let move = 0; move <= 100; move += BOOST_STEP) {
+        const L = start + dir * move;
+        if (L < 0 || L > 100) break;
+        const candidate = labToRgb({ L, a, b });
+        if (measure(candidate) >= need) {
+          if (!best || move < best.move) best = { rgb: candidate, move };
+          break;
+        }
+      }
+    }
+    if (best) {
+      return {
+        rgb: best.rgb,
+        hex: toHex(best.rgb),
+        delta: labDistance(lab, rgbToLab(best.rgb)),
+        hueKept: scale === 1,
+      };
+    }
+  }
+  return null;
+}
+
 /* ── likely pairings ──────────────────────────────────────────────────── */
 
 function byLuminance(colors) {
@@ -185,6 +253,7 @@ export function buildCards(colors) {
     title: 'Light page',
     note: 'The lightest swatch as the page, and the swatch that reads best on it.',
     slots: { bg: light, fg: lightText, meta: quietestAbove(light, colors.filter((c) => c !== light && c !== lightText), NEEDS.body) },
+    slotLabels: { bg: 'Page', fg: 'Body text', meta: 'Secondary text' },
     checks: [
       { label: 'Body text', fg: 'fg', bg: 'bg', need: NEEDS.body },
       { label: 'Secondary text', fg: 'meta', bg: 'bg', need: NEEDS.body },
@@ -197,6 +266,7 @@ export function buildCards(colors) {
     title: 'Dark page',
     note: 'The same question inverted — the darkest swatch carrying the lightest.',
     slots: { bg: dark, fg: darkText, meta: quietestAbove(dark, colors.filter((c) => c !== dark && c !== darkText), NEEDS.body) },
+    slotLabels: { bg: 'Page', fg: 'Body text', meta: 'Secondary text' },
     checks: [
       { label: 'Body text', fg: 'fg', bg: 'bg', need: NEEDS.body },
       { label: 'Secondary text', fg: 'meta', bg: 'bg', need: NEEDS.body },
@@ -210,8 +280,14 @@ export function buildCards(colors) {
     title: 'Primary action',
     note: 'A filled control needs legible text and an edge you can find — 1.4.11, not just 1.4.3.',
     slots: { bg: light, fill, label: inkSwatch(fill.rgb), body: lightText },
+    slotLabels: { bg: 'Page', fill: 'Button fill' },
+    // The label is not a palette colour and never was: it is whichever of black
+    // or white reads better on the fill. So it cannot be swapped or boosted on
+    // its own — moving the fill is what moves it, and `derive` is how both the
+    // boost search and the alternatives search know to re-derive it.
+    derive: { label: 'fill' },
     checks: [
-      { label: 'Button label', fg: 'label', bg: 'fill', need: NEEDS.body },
+      { label: 'Button label', fg: 'label', bg: 'fill', need: NEEDS.body, boostSlot: 'fill' },
       { label: 'Button against page', fg: 'fill', bg: 'bg', need: NEEDS.nonText, kind: 'nonText' },
     ],
   });
@@ -229,6 +305,7 @@ export function buildCards(colors) {
     title: 'Raised surface',
     note: 'A card on the page: its own text has to clear 4.5, its edge has to clear 3 against what is behind it.',
     slots: { bg: light, surface, fg: surfaceText, border: quietestAbove(light, colors.filter((c) => c !== light), NEEDS.nonText) },
+    slotLabels: { bg: 'Page', surface: 'Surface', fg: 'Text on surface', border: 'Edge' },
     checks: [
       { label: 'Text on surface', fg: 'fg', bg: 'surface', need: NEEDS.body },
       { label: 'Edge against page', fg: 'border', bg: 'bg', need: NEEDS.nonText, kind: 'nonText' },
@@ -248,6 +325,7 @@ export function buildCards(colors) {
     title: 'Link in prose',
     note: 'Underlined, because a link told apart by colour alone fails 1.4.1 whatever its contrast.',
     slots: { bg: light, fg: lightText, link },
+    slotLabels: { bg: 'Page', link: 'Link' },
     checks: [
       { label: 'Link on page', fg: 'link', bg: 'bg', need: NEEDS.body },
       // Advisory, not a gate. The 3:1 against surrounding prose is technique
@@ -275,22 +353,133 @@ export function buildCards(colors) {
  * vision, a CVD simulation otherwise. Returns the same card with each slot
  * carrying the colour it is actually drawn in and each check carrying its
  * measured ratio.
+ *
+ * @param {object} card from buildCards()
+ * @param {string|null} type a CVD_TYPES key, or null for normal vision
+ * @param {Set<number>|null} boosted indices of checks whose colour to boost
+ * @param {boolean} offerBoosts compute the boost each failing check *could*
+ *   take. The alternatives search resolves hundreds of speculative cards and
+ *   never reads the offers, so it turns them off.
  */
-export function resolveCard(card, type) {
+export function resolveCard(card, type, boosted = null, offerBoosts = true) {
+  const sim = (rgb) => (type ? simulateCVD(rgb, type) : rgb);
+  const derive = card.derive || {};
+
+  // Slot colours in the palette's own space, rewritten in place as boosts are
+  // applied. A card is one design rather than five independent measurements, so
+  // a later check reads whatever an earlier boost left behind — including the
+  // case where boosting a button's fill to clear its edge moves the background
+  // its own label is measured against.
+  const raw = { ...card.slots };
+
+  const rederive = (changed) => {
+    for (const [name, from] of Object.entries(derive)) {
+      if (from === changed) raw[name] = inkSwatch(raw[from].rgb);
+    }
+  };
+
+  // What `check` would report with `candidate` standing in for the slot the
+  // boost moves — the derived slots re-derived, so the ink on a moved fill is
+  // the ink that fill would actually get.
+  const measureWith = (check, target) => (candidate) => {
+    const probe = { ...raw, [target]: { rgb: candidate } };
+    for (const [name, from] of Object.entries(derive)) {
+      if (from === target) probe[name] = inkSwatch(candidate);
+    }
+    return contrastRatio(sim(probe[check.fg].rgb), sim(probe[check.bg].rgb));
+  };
+
+  // One number for a set of checks that need not share a threshold: each
+  // check's ratio as a fraction of what it needs, worst first. A one-check
+  // group reduces to that check's own test, since ratio / need >= 1 is
+  // ratio >= need.
+  const worstShortfall = (entries) => (candidate) => entries.reduce(
+    (worst, e) => Math.min(worst, measureWith(e.check, e.target)(candidate) / e.check.need),
+    Infinity,
+  );
+
+  const targets = card.checks.map((check, i) => (check.advisory
+    ? null
+    : { i, check, target: check.boostSlot || check.fg }));
+  const wanted = boosted || new Set();
+  const boosts = card.checks.map(() => null);
+
+  const record = (entry, found, applied) => ({
+    slot: entry.target,
+    slotLabel: (card.slotLabels || {})[entry.target] || entry.target,
+    name: card.slots[entry.target].name,
+    from: card.slots[entry.target].hex,
+    to: found.hex,
+    rgb: found.rgb,
+    delta: found.delta,
+    hueKept: found.hueKept,
+    applied,
+  });
+
+  // A slot is solved once, against every check the reader has switched on for
+  // it at the same time. Solving them one after another let the second
+  // overwrite the first: on the primary-action card both checks move the fill,
+  // and a fill dark enough to clear its edge against the page is not
+  // necessarily one whose derived ink clears 4.5. #34C157 / #025068 / #F74A27 /
+  // #AD345D under protanopia ended with the label at 3.18:1 — under a badge
+  // that said it had been fixed.
+  const groups = new Map();
+  for (const entry of targets) {
+    if (!entry || !wanted.has(entry.i)) continue;
+    if (!groups.has(entry.target)) groups.set(entry.target, []);
+    groups.get(entry.target).push(entry);
+  }
+  for (const [target, entries] of groups) {
+    const asked = worstShortfall(entries);
+    if (asked(raw[target].rgb) >= 1) continue;
+    // Anything else measuring this slot that currently passes is a constraint
+    // too — a remedy that breaks a check which already worked is not a remedy.
+    // Where all of them cannot hold at once the reader's own request wins, and
+    // the sibling it broke is reported below as the failure it now is rather
+    // than quietly carrying a boosted badge.
+    const keep = targets.filter((e) => e && e.target === target && !wanted.has(e.i)
+      && measureWith(e.check, e.target)(raw[target].rgb) >= e.check.need);
+    const found = boostToward(raw[target].rgb, 1, worstShortfall([...entries, ...keep]))
+      || boostToward(raw[target].rgb, 1, asked);
+    if (!found) continue;
+    const info = record(entries[0], found, true);
+    raw[target] = { ...raw[target], rgb: found.rgb, hex: found.hex, boostedFrom: info.from };
+    rederive(target);
+    for (const entry of entries) boosts[entry.i] = info;
+  }
+
+  // What each still-failing check would take. Solved together with whatever is
+  // already switched on for the same slot, so pressing it cannot undo them, and
+  // started from that slot's original colour, which is where the solve will
+  // start when it is pressed.
+  if (offerBoosts) {
+    for (const entry of targets) {
+      if (!entry || boosts[entry.i]) continue;
+      if (measureWith(entry.check, entry.target)(raw[entry.target].rgb) >= entry.check.need) continue;
+      const companions = (groups.get(entry.target) || []).filter((e) => boosts[e.i]);
+      const found = boostToward(
+        card.slots[entry.target].rgb, 1, worstShortfall([entry, ...companions]),
+      );
+      if (found) boosts[entry.i] = record(entry, found, false);
+    }
+  }
+
   const slots = {};
-  for (const [name, swatch] of Object.entries(card.slots)) {
-    const rgb = type ? simulateCVD(swatch.rgb, type) : swatch.rgb;
+  for (const [name, swatch] of Object.entries(raw)) {
+    const rgb = sim(swatch.rgb);
     slots[name] = { ...swatch, shown: rgb, shownHex: toHex(rgb) };
   }
-  const checks = card.checks.map((check) => {
+  const checks = card.checks.map((check, i) => {
     const ratio = contrastRatio(slots[check.fg].shown, slots[check.bg].shown);
     // A 1.4.11 check has no AA/AAA tier — it clears 3:1 or it does not — so
     // only text checks carry a grade.
     return {
       ...check,
+      index: i,
       ratio,
       pass: ratio >= check.need,
       grade: check.kind === 'nonText' ? null : grade(ratio),
+      boost: boosts[i],
     };
   });
   // An advisory check reports a number without gating the card.
@@ -298,6 +487,121 @@ export function resolveCard(card, type) {
     ...card,
     slots,
     checks,
+    // One entry per boosted slot: a group shares a record, so filtering the
+    // per-check list would report the same move twice.
+    boosts: [...new Set(boosts.filter((b) => b && b.applied))],
     passes: checks.every((c) => c.advisory || c.pass),
   };
+}
+
+/**
+ * The same card with boosted colours already in it, for a caller that holds the
+ * concrete colours rather than the check indices that produced them.
+ *
+ * The accessibility export needs this: a boost switched on under a simulation
+ * often repairs a check that already passes in normal vision, so re-deriving it
+ * from the indices under normal vision made it vanish from the export while it
+ * was still on screen.
+ *
+ * @param {object} card from buildCards()
+ * @param {Map<string, {rgb:object, hex:string, from:string}>|null} overrides by slot
+ */
+export function withBoosts(card, overrides) {
+  if (!overrides || !overrides.size) return card;
+  const slots = { ...card.slots };
+  for (const [slot, boost] of overrides) {
+    if (!slots[slot]) continue;
+    slots[slot] = { ...slots[slot], rgb: boost.rgb, hex: boost.to, boostedFrom: boost.from };
+  }
+  for (const [name, from] of Object.entries(card.derive || {})) {
+    if (overrides.has(from)) slots[name] = inkSwatch(slots[from].rgb);
+  }
+  return { ...card, slots };
+}
+
+/* ── the rest of the palette, assessed ────────────────────────────────── */
+
+// Raising the colour count is the reader asking for more than the pairings
+// need: the cards commit to one colour per slot, so every extra swatch is a
+// colour with nowhere to go. Rather than list it and stop, put each one where
+// it might belong.
+//
+// "Spare" is by identity, not by value — the cards hold the same swatch objects
+// paletteFromPixels() produced, so a colour is placed if some card slot *is* it,
+// and the derived ink slot is never one of them.
+export function sparePlaced(cards, colors) {
+  const placed = new Set();
+  for (const card of cards) {
+    for (const swatch of Object.values(card.slots)) placed.add(swatch);
+  }
+  return { spare: colors.filter((c) => !placed.has(c)), placed };
+}
+
+function minRatio(checks) {
+  return checks.reduce((lo, c) => Math.min(lo, c.ratio), Infinity);
+}
+
+/**
+ * Every slot in `card` that `color` could be dropped into without leaving the
+ * checks over that slot failing.
+ *
+ * A slot is only a candidate if some non-advisory check actually measures it —
+ * otherwise every colour would "work" there vacuously, which is how the link
+ * card's prose colour, checked in the light-page card rather than its own,
+ * would have reported all nine swatches as viable.
+ */
+function placementsIn(card, base, color, type) {
+  const out = [];
+  for (const [slot, slotLabel] of Object.entries(card.slotLabels || {})) {
+    if (card.slots[slot] === color) continue;
+    const affected = card.checks
+      .map((check, i) => ({ check, i }))
+      .filter(({ check }) => !check.advisory && (check.fg === slot || check.bg === slot));
+    if (!affected.length) continue;
+
+    const slots = { ...card.slots, [slot]: color };
+    for (const [name, from] of Object.entries(card.derive || {})) {
+      if (from === slot) slots[name] = inkSwatch(color.rgb);
+    }
+    const resolved = resolveCard({ ...card, slots }, type, null, false);
+    const checks = affected.map(({ i }) => resolved.checks[i]);
+    if (!checks.every((c) => c.pass)) continue;
+
+    // The distinction worth reading: a slot this colour merely also fits, or
+    // one the card currently fails and this colour repairs.
+    const fixed = affected.filter(({ i }) => !base.checks[i].pass).map(({ check }) => check.label);
+    out.push({
+      cardId: card.id,
+      cardTitle: card.title,
+      slot,
+      slotLabel,
+      checks,
+      fixed,
+      fixes: fixed.length > 0,
+    });
+  }
+  return out;
+}
+
+/**
+ * Each colour the pairings do not use, with the slots it could carry.
+ *
+ * A colour with no placements is reported with an empty list rather than
+ * dropped: "this one fits nowhere in these five designs" is the assessment, and
+ * omitting it would leave the reader to assume it simply had not been checked.
+ *
+ * @param {object[]} cards from buildCards()
+ * @param {object[]} colors the full palette
+ * @param {string|null} type the simulation the assessment is made under
+ */
+export function alternatives(cards, colors, type = null) {
+  const { spare } = sparePlaced(cards, colors);
+  if (!spare.length) return [];
+  const bases = cards.map((card) => resolveCard(card, type, null, false));
+  return spare.map((color) => ({
+    color,
+    placements: cards
+      .flatMap((card, i) => placementsIn(card, bases[i], color, type))
+      .sort((a, b) => (b.fixes - a.fixes) || (minRatio(b.checks) - minRatio(a.checks))),
+  }));
 }
