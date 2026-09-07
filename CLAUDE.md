@@ -53,6 +53,18 @@ as a phantom second build.)
   there is no `.env` on a static site.
 - There is no `.env` here and nothing to keep out of git beyond that — a
   static site has no secrets to hold.
+- **`main` has carried known-broken code once, and it was avoidable.** The
+  accessibility feature was merged two minutes after its review was requested
+  and three minutes before the check-in armed to collect it. The review landed
+  two minutes after the merge with two real defects — one of them a false
+  negative in the colour-vision check, i.e. the feature whose whole job is
+  surfacing accessibility problems quietly dropping real ones. They took a
+  second PR to fix, and `main` was wrong in between. Nothing reached the site
+  only because nobody happened to run `palette deploy` in that window; had they,
+  the broken check would have gone live. A review you have just asked for is a
+  response you are expecting, and point 7 of the conventions puts its arrival
+  at about four minutes — merging inside that window is not "not waiting for a
+  human who isn't coming", it is throwing away the review you just requested.
 
 ## How the extractor is put together
 
