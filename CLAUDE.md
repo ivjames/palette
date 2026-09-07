@@ -134,6 +134,9 @@ And three for the boost, same conditions:
 - `#888888` against `#767676` at 7 — must return null; sRGB has nothing that far
 - every boost a card offers, applied, must leave that check passing — under all
   three simulations as well as normal vision
+- over random palettes, *every subset* of the boosts a card offers: no check may
+  end applied-but-short while claiming to pass, and no boost may break a check
+  that was passing before it. ~74k combinations, all four vision modes
 
 ### The two ways out of a failing check
 
@@ -160,6 +163,28 @@ about it are load-bearing:
   simulation, where the ink was chosen for a colour the reader does not see:
   `#FF0000` under protanopia reads 3.28:1, and the fix is a 3 ΔE nudge of the
   fill that flips the ink to white and takes it to 7.22:1.
+
+Two more, both found in review, both the same shape — a remedy that was
+computed correctly and then reported as something it wasn't:
+
+- **Boosts on one slot are solved together, not one after another.** Both
+  primary-action checks move the fill, and a fill dark enough to clear its edge
+  against the page is not necessarily one whose derived ink clears 4.5. Applied
+  in sequence the second overwrote the first: `#34C157` / `#025068` / `#F74A27`
+  / `#AD345D` under protanopia left the label at 3.18:1 under a badge reading
+  "✓ Boosted". A slot is now solved once against every check switched on for it,
+  on a normalised measure (each ratio as a fraction of its own threshold, worst
+  first, target 1), plus the checks on that slot that already passed as
+  constraints to preserve. And the badge reads `check.pass`, never
+  `boost.applied` — where no colour satisfies everything, the reader's request
+  wins and the check it could not carry says so.
+- **The export takes the boosted colours, not the check indices.** A boost
+  switched on under a simulation is usually repairing a check that passes in
+  normal vision — a red button label reads 3.28:1 under protanopia and 5.25:1
+  without it — so re-deriving it from the indices under normal vision found
+  nothing to do and dropped the boost from the export entirely, while it was
+  still on screen. `appliedBoosts()` resolves them to concrete colours per card
+  and slot; `withBoosts()` puts them back into the card the export measures.
 
 The other way out is a colour already in the palette. The cards commit to one
 swatch per slot, so raising the colour count produces swatches with nowhere to

@@ -389,31 +389,80 @@ export function resolveCard(card, type, boosted = null, offerBoosts = true) {
     return contrastRatio(sim(probe[check.fg].rgb), sim(probe[check.bg].rgb));
   };
 
-  const boosts = card.checks.map((check, i) => {
-    if (check.advisory) return null;
-    const target = check.boostSlot || check.fg;
-    const measure = measureWith(check, target);
-    if (measure(raw[target].rgb) >= check.need) return null;
-    if (!offerBoosts && !(boosted && boosted.has(i))) return null;
-    const found = boostToward(raw[target].rgb, check.need, measure);
-    if (!found) return null;
-    const info = {
-      slot: target,
-      slotLabel: (card.slotLabels || {})[target] || target,
-      name: card.slots[target].name,
-      from: card.slots[target].hex,
-      to: found.hex,
-      rgb: found.rgb,
-      delta: found.delta,
-      hueKept: found.hueKept,
-      applied: Boolean(boosted && boosted.has(i)),
-    };
-    if (info.applied) {
-      raw[target] = { ...raw[target], rgb: found.rgb, hex: found.hex, boostedFrom: info.from };
-      rederive(target);
-    }
-    return info;
+  // One number for a set of checks that need not share a threshold: each
+  // check's ratio as a fraction of what it needs, worst first. A one-check
+  // group reduces to that check's own test, since ratio / need >= 1 is
+  // ratio >= need.
+  const worstShortfall = (entries) => (candidate) => entries.reduce(
+    (worst, e) => Math.min(worst, measureWith(e.check, e.target)(candidate) / e.check.need),
+    Infinity,
+  );
+
+  const targets = card.checks.map((check, i) => (check.advisory
+    ? null
+    : { i, check, target: check.boostSlot || check.fg }));
+  const wanted = boosted || new Set();
+  const boosts = card.checks.map(() => null);
+
+  const record = (entry, found, applied) => ({
+    slot: entry.target,
+    slotLabel: (card.slotLabels || {})[entry.target] || entry.target,
+    name: card.slots[entry.target].name,
+    from: card.slots[entry.target].hex,
+    to: found.hex,
+    rgb: found.rgb,
+    delta: found.delta,
+    hueKept: found.hueKept,
+    applied,
   });
+
+  // A slot is solved once, against every check the reader has switched on for
+  // it at the same time. Solving them one after another let the second
+  // overwrite the first: on the primary-action card both checks move the fill,
+  // and a fill dark enough to clear its edge against the page is not
+  // necessarily one whose derived ink clears 4.5. #34C157 / #025068 / #F74A27 /
+  // #AD345D under protanopia ended with the label at 3.18:1 — under a badge
+  // that said it had been fixed.
+  const groups = new Map();
+  for (const entry of targets) {
+    if (!entry || !wanted.has(entry.i)) continue;
+    if (!groups.has(entry.target)) groups.set(entry.target, []);
+    groups.get(entry.target).push(entry);
+  }
+  for (const [target, entries] of groups) {
+    const asked = worstShortfall(entries);
+    if (asked(raw[target].rgb) >= 1) continue;
+    // Anything else measuring this slot that currently passes is a constraint
+    // too — a remedy that breaks a check which already worked is not a remedy.
+    // Where all of them cannot hold at once the reader's own request wins, and
+    // the sibling it broke is reported below as the failure it now is rather
+    // than quietly carrying a boosted badge.
+    const keep = targets.filter((e) => e && e.target === target && !wanted.has(e.i)
+      && measureWith(e.check, e.target)(raw[target].rgb) >= e.check.need);
+    const found = boostToward(raw[target].rgb, 1, worstShortfall([...entries, ...keep]))
+      || boostToward(raw[target].rgb, 1, asked);
+    if (!found) continue;
+    const info = record(entries[0], found, true);
+    raw[target] = { ...raw[target], rgb: found.rgb, hex: found.hex, boostedFrom: info.from };
+    rederive(target);
+    for (const entry of entries) boosts[entry.i] = info;
+  }
+
+  // What each still-failing check would take. Solved together with whatever is
+  // already switched on for the same slot, so pressing it cannot undo them, and
+  // started from that slot's original colour, which is where the solve will
+  // start when it is pressed.
+  if (offerBoosts) {
+    for (const entry of targets) {
+      if (!entry || boosts[entry.i]) continue;
+      if (measureWith(entry.check, entry.target)(raw[entry.target].rgb) >= entry.check.need) continue;
+      const companions = (groups.get(entry.target) || []).filter((e) => boosts[e.i]);
+      const found = boostToward(
+        card.slots[entry.target].rgb, 1, worstShortfall([entry, ...companions]),
+      );
+      if (found) boosts[entry.i] = record(entry, found, false);
+    }
+  }
 
   const slots = {};
   for (const [name, swatch] of Object.entries(raw)) {
@@ -438,9 +487,36 @@ export function resolveCard(card, type, boosted = null, offerBoosts = true) {
     ...card,
     slots,
     checks,
-    boosts: boosts.filter((b) => b && b.applied),
+    // One entry per boosted slot: a group shares a record, so filtering the
+    // per-check list would report the same move twice.
+    boosts: [...new Set(boosts.filter((b) => b && b.applied))],
     passes: checks.every((c) => c.advisory || c.pass),
   };
+}
+
+/**
+ * The same card with boosted colours already in it, for a caller that holds the
+ * concrete colours rather than the check indices that produced them.
+ *
+ * The accessibility export needs this: a boost switched on under a simulation
+ * often repairs a check that already passes in normal vision, so re-deriving it
+ * from the indices under normal vision made it vanish from the export while it
+ * was still on screen.
+ *
+ * @param {object} card from buildCards()
+ * @param {Map<string, {rgb:object, hex:string, from:string}>|null} overrides by slot
+ */
+export function withBoosts(card, overrides) {
+  if (!overrides || !overrides.size) return card;
+  const slots = { ...card.slots };
+  for (const [slot, boost] of overrides) {
+    if (!slots[slot]) continue;
+    slots[slot] = { ...slots[slot], rgb: boost.rgb, hex: boost.to, boostedFrom: boost.from };
+  }
+  for (const [name, from] of Object.entries(card.derive || {})) {
+    if (overrides.has(from)) slots[name] = inkSwatch(slots[from].rgb);
+  }
+  return { ...card, slots };
 }
 
 /* ── the rest of the palette, assessed ────────────────────────────────── */

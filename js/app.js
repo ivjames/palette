@@ -6,7 +6,7 @@ import { extractPalette, SORTS } from './palette.js';
 import { FORMATS, filenameFor, rgbString, hslString, tailwindClass } from './export.js';
 import { CVD_TYPES, simulateCVD, toHex } from './color.js';
 import {
-  againstExtremes, buildCards, resolveCard, confusions, alternatives,
+  againstExtremes, buildCards, resolveCard, withBoosts, confusions, alternatives,
   grade, ratioText,
 } from './a11y.js';
 
@@ -224,8 +224,30 @@ function paletteForExport() {
     // everything hanging off them are the palette's own property and follow the
     // extraction order, which is the order the cards on screen were built from.
     analysed: state.palette.colors,
-    boosts: state.boosts,
+    boosts: appliedBoosts(),
   };
+}
+
+// The boosts that are switched on, resolved to the colours they actually put on
+// screen, keyed by card and slot.
+//
+// The export gets these rather than the check indices that produced them. A
+// boost chosen on a simulation tab is often repairing a check that already
+// passes in normal vision — a red button label under protanopia reads 5.25:1
+// with no simulation — so re-deriving it from the indices under normal vision
+// found nothing to do and dropped the boost from the export entirely, while it
+// was still on screen in front of the reader writing the ticket.
+function appliedBoosts() {
+  const out = new Map();
+  if (!state.boosts.size) return out;
+  for (const card of buildCards(state.palette.colors)) {
+    const chosen = state.boosts.get(card.id);
+    if (!chosen || !chosen.size) continue;
+    const resolved = resolveCard(card, state.cvd, chosen, false);
+    if (!resolved.boosts.length) continue;
+    out.set(card.id, new Map(resolved.boosts.map((b) => [b.slot, { ...b, under: state.cvd }])));
+  }
+  return out;
 }
 
 function render() {
@@ -346,16 +368,26 @@ function checkBadge(check, cardId) {
   const { boost } = check;
   const key = `${cardId}:${check.index}`;
   if (boost && boost.applied) {
-    return toggleNode('is-pass', `✓ Boosted ${check.grade || ''}`.trim(),
-      `${ratioText(check.ratio)} with ${boost.to} in the ${boost.slotLabel.toLowerCase()} slot. ` +
-      `Press again to put ${boost.from} back.`,
+    // Never read from `applied` alone. Two checks can move the same slot, and
+    // where no one colour satisfies both, the reader's own request wins and
+    // this one is left short — a badge that said "boosted" over a ratio under
+    // its threshold would be the failure this whole section exists to surface.
+    if (check.pass) {
+      return toggleNode('is-pass', `✓ Boosted ${check.grade || ''}`.trim(),
+        `${ratioText(check.ratio)} with ${boost.to} in the ${boost.slotLabel.toLowerCase()} slot. ` +
+        `Press again to put ${boost.from} back.`,
+        key, true);
+    }
+    return toggleNode('is-fail', `✕ Needs ${check.need.toFixed(1)}:1`,
+      `${ratioText(check.ratio)} — ${boost.to} could not clear this and the other check on ` +
+      `the same colour at once. Press again to put ${boost.from} back.`,
       key, true);
   }
   if (!check.pass) {
     if (!boost) {
       return badgeNode('is-fail', `✕ Needs ${check.need.toFixed(1)}:1`,
-        `${ratioText(check.ratio)} — short of ${check.need.toFixed(1)}:1, and no colour of ` +
-        `this hue reaches that against this background.`);
+        `${ratioText(check.ratio)} — short of ${check.need.toFixed(1)}:1, and boosting ` +
+        `cannot reach it here.`);
     }
     // The notice keeps its wording. It is the same verdict it always was; what
     // changed is that it now does something, and the arrow and the fill are
@@ -525,6 +557,9 @@ function cardNode(card) {
 
   const checks = document.createElement('ul');
   checks.className = 'checks';
+  // Two checks sharing a slot share the one boost that moved it, so the note
+  // goes under the first of them rather than under each.
+  const noted = new Set();
   for (const check of card.checks) {
     const item = document.createElement('li');
     const line = document.createElement('div');
@@ -537,7 +572,10 @@ function cardNode(card) {
     ratio.textContent = ratioText(check.ratio);
     line.append(name, ratio, checkBadge(check, card.id));
     item.append(line);
-    if (check.boost && check.boost.applied) item.append(boostNote(check.boost));
+    if (check.boost && check.boost.applied && !noted.has(check.boost.slot)) {
+      noted.add(check.boost.slot);
+      item.append(boostNote(check.boost));
+    }
     checks.append(item);
   }
 

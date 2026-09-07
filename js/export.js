@@ -6,7 +6,7 @@
 
 import { CVD_TYPES } from './color.js';
 import {
-  againstExtremes, pairMatrix, buildCards, resolveCard, confusions,
+  againstExtremes, pairMatrix, buildCards, resolveCard, withBoosts, confusions,
   alternatives, grade, ratioText, truncate,
 } from './a11y.js';
 
@@ -93,6 +93,11 @@ export function toAccessibility(palette, source) {
   // keyed to. The listings follow the reader's chosen order, because a listing
   // is a listing.
   const analysed = palette.analysed || colors;
+  // Concrete colours by card and slot, not the check indices they came from —
+  // see appliedBoosts() in app.js for why the indices could not survive the
+  // trip. Everything below still reports normal-vision ratios; a boost chosen
+  // under a simulation is a colour the design now holds, and this is what that
+  // colour measures for everyone else.
   const boosts = palette.boosts || new Map();
   const lines = [`${header(palette, source)} — accessibility`, ''];
 
@@ -117,27 +122,34 @@ export function toAccessibility(palette, source) {
   lines.push('', 'Likely pairings');
   const cards = buildCards(analysed);
   for (const card of cards) {
-    const resolved = resolveCard(card, null, boosts.get(card.id));
+    const applied = boosts.get(card.id);
+    const resolved = resolveCard(withBoosts(card, applied), null);
     const slots = Object.entries(resolved.slots)
       .map(([name, s]) => `${name} ${s.hex}`)
       .join(', ');
     lines.push(`  ${resolved.title} — ${slots}`);
+    for (const boost of applied ? applied.values() : []) {
+      lines.push(
+        `      boosted: ${boost.slotLabel} ${boost.from} -> ${boost.to} ` +
+        `(dE ${Math.round(boost.delta)}${boost.hueKept ? '' : ', chroma eased'}` +
+        `${boost.under ? `, chosen under ${boost.under}` : ''}) — ` +
+        'not one of the extracted colours',
+      );
+    }
     for (const check of resolved.checks) {
       const verdict = check.advisory
         ? `advisory — ${check.advisory}`
         : `needs ${check.need.toFixed(1)}  ${check.pass ? 'pass' : 'FAILS'}${check.grade ? `  ${check.grade}` : ''}`;
       lines.push(`    ${check.label.padEnd(22)}${ratioText(check.ratio).padStart(8)}  ${verdict}`);
       // A failure the reader can do something about is worth carrying into the
-      // ticket with the remedy attached; a boost already switched on is worth
-      // carrying with the warning attached, because the ratio above it is only
-      // true of a colour this palette does not contain.
+      // ticket with the remedy attached.
       const { boost } = check;
       if (!boost) continue;
-      const moved = `${boost.slotLabel} ${boost.from} -> ${boost.to} (dE ${Math.round(boost.delta)}` +
-        `${boost.hueKept ? '' : ', chroma eased'})`;
-      lines.push(boost.applied
-        ? `      boosted: ${moved} — not one of the extracted colours`
-        : `      boost:   ${moved} would clear ${check.need.toFixed(1)}`);
+      lines.push(
+        `      boost:   ${boost.slotLabel} ${boost.from} -> ${boost.to} ` +
+        `(dE ${Math.round(boost.delta)}${boost.hueKept ? '' : ', chroma eased'}) ` +
+        `would clear ${check.need.toFixed(1)}`,
+      );
     }
   }
 
