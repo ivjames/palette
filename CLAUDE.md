@@ -59,12 +59,16 @@ as a phantom second build.)
   two minutes after the merge with two real defects — one of them a false
   negative in the colour-vision check, i.e. the feature whose whole job is
   surfacing accessibility problems quietly dropping real ones. They took a
-  second PR to fix, and `main` was wrong in between. Nothing reached the site
-  only because nobody happened to run `palette deploy` in that window; had they,
-  the broken check would have gone live. A review you have just asked for is a
+  second PR to fix, and `main` was wrong in between. It was caught because a
+  person pushed back on the merge — not by anything in the process, which had
+  by then been actively dismantled: on merging, the PR subscription was
+  cancelled and the scheduled check-in deleted, so the review's arrival could
+  not be noticed. Left alone the defects sit on `main` until the next
+  `palette deploy` puts them live. A review you have just asked for is a
   response you are expecting, and point 7 of the conventions puts its arrival
   at about four minutes — merging inside that window is not "not waiting for a
-  human who isn't coming", it is throwing away the review you just requested.
+  human who isn't coming", it is throwing away the review you just requested
+  and then closing the channel it would have arrived on.
 
 ## How the extractor is put together
 
