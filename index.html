@@ -79,19 +79,29 @@
           <div class="cvd-tabs" id="cvd-tabs" role="tablist" aria-labelledby="cvd-label"></div>
         </div>
 
-        <h3 class="a11y-h">Against white and black</h3>
-        <table class="bw">
-          <thead>
-            <tr><th scope="col">Colour</th><th scope="col">On white</th><th scope="col">On black</th></tr>
-          </thead>
-          <tbody id="bw-body"></tbody>
-        </table>
+        <details class="group" open>
+          <summary><h3 class="a11y-h">Against white and black</h3></summary>
+          <table class="bw">
+            <thead>
+              <tr><th scope="col">Colour</th><th scope="col">On white</th><th scope="col">On black</th></tr>
+            </thead>
+            <tbody id="bw-body"></tbody>
+          </table>
+        </details>
 
-        <h3 class="a11y-h">Likely pairings</h3>
-        <ul class="cards" id="cards"></ul>
+        <details class="group" open>
+          <summary><h3 class="a11y-h">Likely pairings</h3></summary>
+          <ul class="cards" id="cards"></ul>
+        </details>
 
-        <h3 class="a11y-h">Told apart by colour alone</h3>
-        <ul class="findings" id="findings"></ul>
+        <!-- Left to the renderer: this one opens when there is something in
+             it, because a collapsed heading is exactly what a reader skips. -->
+        <details class="group" id="findings-group">
+          <summary>
+            <h3 class="a11y-h">Told apart by colour alone <span class="group-count" id="findings-count"></span></h3>
+          </summary>
+          <ul class="findings" id="findings"></ul>
+        </details>
       </div>
     </details>
 

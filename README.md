@@ -50,9 +50,12 @@ Colour vision deficiency is simulated with the Machado, Oliveira & Fischer
 (2009) matrices, applied in linear RGB. This is a separate question from
 contrast rather than a second contrast pass: dichromatic simulation roughly
 preserves luminance, so ratios barely move while hue differences collapse. A
-pair is only reported as confusable when it starts clearly distinct, ends up
-close in Lab, *and* has under 3:1 of contrast — with more than that, lightness
-tells the two apart whatever happens to hue.
+pair is only reported as confusable when it starts clearly distinct, loses at
+least half that difference to the simulation, ends up close in Lab, *and* has
+under 3:1 of contrast. Each condition excludes a different false positive: two
+near-identical greys are untouched by any of the matrices, so reporting them
+would blame the simulation for a palette that never separated them, and above
+3:1 the pair is tellable apart on lightness whatever happens to hue.
 
 ## Running it locally
 

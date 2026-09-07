@@ -29,6 +29,8 @@ const el = {
   bwBody: document.getElementById('bw-body'),
   cards: document.getElementById('cards'),
   findings: document.getElementById('findings'),
+  findingsGroup: document.getElementById('findings-group'),
+  findingsCount: document.getElementById('findings-count'),
   tabs: document.getElementById('tabs'),
   exportBody: document.getElementById('export-body'),
   copyExport: document.getElementById('copy-export'),
@@ -187,6 +189,7 @@ function extract() {
     return false;
   }
   clearError();
+  findingsTouched = false;
   if (!state.renamed) el.name.value = state.palette.name;
   el.result.hidden = false;
   // Shrink the dropzone once there is something to look at — it stays a live
@@ -456,29 +459,33 @@ function cardNode(card) {
   return li;
 }
 
-function findingNodes(colors) {
+// Which simulations to report on: the one being previewed, or all three when
+// looking at the palette in normal vision.
+function findingList(colors) {
   const types = state.cvd ? [state.cvd] : Object.keys(CVD_TYPES);
+  return types.flatMap((type) => confusions(colors, type).map((pair) => ({ type, pair })));
+}
+
+function findingNodes(list) {
   const items = [];
-  for (const type of types) {
-    for (const pair of confusions(colors, type)) {
-      const li = document.createElement('li');
-      li.className = 'finding';
-      const swatches = document.createElement('span');
-      swatches.className = 'finding-pair';
-      for (const c of [pair.a, pair.b]) {
-        const dot = document.createElement('span');
-        dot.className = 'finding-dot';
-        dot.style.background = toHex(simulateCVD(c.rgb, type));
-        swatches.append(dot);
-      }
-      const text = document.createElement('span');
-      text.textContent =
-        `${CVD_TYPES[type]}: ${pair.a.name} and ${pair.b.name} look alike ` +
-        `(difference ${Math.round(pair.before)} → ${Math.round(pair.after)}, ` +
-        `and only ${ratioText(pair.contrast)} of contrast to separate them).`;
-      li.append(swatches, text);
-      items.push(li);
+  for (const { type, pair } of list) {
+    const li = document.createElement('li');
+    li.className = 'finding';
+    const swatches = document.createElement('span');
+    swatches.className = 'finding-pair';
+    for (const c of [pair.a, pair.b]) {
+      const dot = document.createElement('span');
+      dot.className = 'finding-dot';
+      dot.style.background = toHex(simulateCVD(c.rgb, type));
+      swatches.append(dot);
     }
+    const text = document.createElement('span');
+    text.textContent =
+      `${CVD_TYPES[type]}: ${pair.a.name} and ${pair.b.name} look alike ` +
+      `(difference ${Math.round(pair.before)} → ${Math.round(pair.after)}, ` +
+      `and only ${ratioText(pair.contrast)} of contrast to separate them).`;
+    li.append(swatches, text);
+    items.push(li);
   }
   if (!items.length) {
     const li = document.createElement('li');
@@ -491,13 +498,34 @@ function findingNodes(colors) {
   return items;
 }
 
+// The findings group opens itself when it has something to say. Once the
+// reader has opened or closed it by hand that judgement is theirs, so the
+// automatic default stops applying until the next image.
+let findingsTouched = false;
+let syncingFindings = false;
+
+el.findingsGroup.addEventListener('toggle', () => {
+  if (!syncingFindings) findingsTouched = true;
+});
+
 function renderA11y() {
   // The cards read the extraction order rather than the display order, so
   // changing the sort re-orders the swatches without re-picking the pairings.
   const source = state.palette.colors;
   el.bwBody.replaceChildren(...state.ordered.map(bwRow));
   el.cards.replaceChildren(...buildCards(source).map((card) => cardNode(resolveCard(card, state.cvd))));
-  el.findings.replaceChildren(...findingNodes(source));
+
+  const list = findingList(source);
+  el.findings.replaceChildren(...findingNodes(list));
+  el.findingsCount.textContent = list.length
+    ? `${list.length} pair${list.length === 1 ? '' : 's'}`
+    : 'none';
+  if (!findingsTouched) {
+    syncingFindings = true;
+    el.findingsGroup.open = list.length > 0;
+    syncingFindings = false;
+  }
+
   for (const tab of el.cvdTabs.children) {
     tab.setAttribute('aria-selected', String((tab.dataset.cvd || '') === (state.cvd || '')));
   }

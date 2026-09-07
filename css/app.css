@@ -335,6 +335,21 @@ main {
 
 .a11y-body { padding: 4px 16px 18px; border-top: 1px solid var(--border); }
 
+/* Each group is a <details>, and its <summary> wraps a real <h3> so the
+   heading outline survives being made collapsible. */
+.group { margin-top: 22px; }
+.group > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  margin-bottom: 10px;
+}
+.group > summary::-webkit-details-marker { display: none; }
+.group > summary::before { content: '▸'; color: var(--faint); font-size: 0.7rem; }
+.group[open] > summary::before { content: '▾'; }
+
 .a11y-h {
   font-family: var(--font-display);
   font-size: 0.72rem;
@@ -342,7 +357,21 @@ main {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--faint);
-  margin: 22px 0 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* A collapsed group still has to say whether it is worth opening. */
+.group-count {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.05em;
+  text-transform: none;
+  color: var(--mid);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
 }
 
 .cvd {

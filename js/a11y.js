@@ -72,13 +72,17 @@ export function pairMatrix(colors) {
 
 /* ── colour vision deficiency ─────────────────────────────────────────── */
 
-// A pair has to start clearly distinct, end up close, and have no lightness
-// difference to fall back on. That third condition is the load-bearing one:
-// two colours can sit 16 dE apart after simulation and still be trivially
-// tellable apart if one is dark and the other light, so a pair is only
-// reported when its contrast is under the 3:1 the spec already treats as the
-// point where a difference is perceivable on luminance alone.
+// Four conditions, and each one excludes a class of false positive.
+//
+// The pair has to start clearly distinct; it has to lose most of that
+// difference to the simulation rather than merely be close at the end (two
+// near-identical greys are unchanged by any of these matrices, and reporting
+// "21 -> 21" as a colour-vision finding would be blaming the simulation for a
+// palette that never separated them); it has to end up close in absolute
+// terms; and it must have no lightness difference to fall back on, since above
+// 3:1 the two are tellable apart whatever happens to hue.
 const DISTINCT = 20;
+const COLLAPSED = 0.5;
 const CONFUSABLE = 25;
 const RESCUED_BY_LIGHTNESS = NEEDS.nonText;
 
@@ -102,6 +106,7 @@ export function confusions(colors, type) {
       // of reporting this separately from the cards.
       const contrast = contrastRatio(colors[i].rgb, colors[j].rgb);
       if (before < DISTINCT) continue;
+      if (after > before * COLLAPSED) continue;
       if (after >= CONFUSABLE || contrast >= RESCUED_BY_LIGHTNESS) continue;
       out.push({ a: colors[i], b: colors[j], before, after, contrast });
     }
