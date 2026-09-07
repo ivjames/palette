@@ -76,11 +76,11 @@ Six ES modules, no bundler, no dependencies — the browser loads them directly.
 
 | module | what it owns |
 |---|---|
-| `js/color.js` | sRGB ↔ HSL ↔ CIE Lab, WCAG relative luminance, contrast, CVD simulation |
+| `js/color.js` | sRGB ↔ HSL ↔ CIE Lab (both ways), WCAG relative luminance, contrast, CVD simulation |
 | `js/quantize.js` | modified median cut over a 5-bit histogram, then k-means in Lab |
 | `js/names.js` | the colour-name reference table and the palette namer |
 | `js/palette.js` | image → sampled pixels → swatches, plus the vibrant/muted roles |
-| `js/a11y.js` | contrast thresholds, the pairing cards, colour-vision findings |
+| `js/a11y.js` | contrast thresholds, the pairing cards, the boost search, the spare-colour assessment, colour-vision findings |
 | `js/export.js` | every output format (hex, text, CSS, Tailwind v3/v4, JSON, a11y) |
 | `js/app.js` | DOM wiring only — it knows nothing about colour |
 
@@ -127,6 +127,57 @@ Four cases worth keeping as a regression set, all runnable under plain `node`:
 - `#DFA96C` / `#B98F2C` — must **not** report; simulation moves it *farther* apart (21 → 23)
 - `#D10EC1` / `#1D177D` — must report; only the simulated contrast reveals it
 - any greyscale palette — must report nothing under all three
+
+And three for the boost, same conditions:
+
+- `#FFFFFF` against `#D2B0B2` at 4.5 — must find `#494949`, not null
+- `#888888` against `#767676` at 7 — must return null; sRGB has nothing that far
+- every boost a card offers, applied, must leave that check passing — under all
+  three simulations as well as normal vision
+
+### The two ways out of a failing check
+
+A red verdict on a pairing card is a button, and pressing it applies a
+**boost**: `boostToward()` walks the failing slot's colour along L\* — a\* and
+b\* held, so hue *and* chroma survive — and stops at the first colour that
+clears the threshold. Only if the whole L\* range fails does it start giving up
+chroma, in quarters, which is the order that spends the least. Three things
+about it are load-bearing:
+
+- **It measures candidates after the sRGB round trip, never the Lab it asked
+  for.** A saturated colour driven toward either end of L\* leaves the cube and
+  `labToRgb()` clamps per channel; judging it on the Lab would report a ratio
+  the screen does not show.
+- **The starting L\* is clamped into [0, 100].** `rgbToLab()` returns
+  100.0000039 for white, and the range guard used to cut the *downward* walk off
+  before its first step — every boost from a white or near-white slot silently
+  reported "unreachable". Returning null is a real answer (nothing in sRGB
+  clears 7:1 against a mid grey), so a bug that produces one is invisible.
+- **The measurement is passed in, not a background.** That is what lets the
+  button-label check move the *fill* and re-derive its black-or-white ink from
+  the candidate. That check cannot fail in normal vision — the better of black
+  and white is never worse than 4.58:1 against anything — but it can under
+  simulation, where the ink was chosen for a colour the reader does not see:
+  `#FF0000` under protanopia reads 3.28:1, and the fix is a 3 ΔE nudge of the
+  fill that flips the ink to white and takes it to 7.22:1.
+
+The other way out is a colour already in the palette. The cards commit to one
+swatch per slot, so raising the colour count produces swatches with nowhere to
+go; `alternatives()` tries each of those against every slot the cards name in
+`slotLabels`, and reports the ones where every check *over that slot* passes,
+repairs first. Two conditions in it, and both have a case behind them:
+
+| condition | the wrong answer without it |
+|---|---|
+| the slot must be measured by at least one non-advisory check | the link card's prose colour is only ever the *background* of its advisory check, so "every affected check passes" was vacuously true and all nine swatches were reported as viable alternatives for it |
+| `derive` re-derived after the swap | a colour dropped into a button fill kept the ink picked for the old fill, so the label ratio reported was one no rendering would produce |
+
+A boost is a colour the palette does not contain, so anywhere one is shown or
+exported it has to say so — the card note and the `boosted:` line in the
+accessibility export both do. That export also builds its cards from the
+extraction order (`palette.analysed`) rather than the reader's chosen sort,
+because a boost is keyed to a card and a check index and those have to mean the
+same thing in both places.
 
 One DOM gotcha in the same feature: `<details>` fires `toggle`
 **asynchronously**, so a flag raised around a programmatic `open = …` and

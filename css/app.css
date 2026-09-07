@@ -436,6 +436,24 @@ main {
 .badge.is-note { color: var(--faint); }
 .badge.is-fail { color: var(--danger); border-color: #4A1F1B; }
 
+/* A verdict the reader can act on. It has to read as pressable without the
+   colour doing that work — the badge palette is already carrying pass/fail —
+   so the affordance is the fill and the arrow, and the pressed state is
+   aria-pressed rather than a hue. */
+.badge-toggle {
+  cursor: pointer;
+  background: #00000040;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.badge-toggle:hover { background: #FFFFFF14; }
+.badge-toggle[aria-pressed="true"] { background: #2A4A3240; }
+.badge-toggle[aria-pressed="true"]::after { content: ' ↺'; }
+.badge-toggle[aria-pressed="false"]::after { content: ' ↑'; }
+
+@media (prefers-reduced-motion: reduce) {
+  .badge-toggle { transition: none; }
+}
+
 /* ── pairing cards ────────────────────────────────────────────────── */
 
 .cards {
@@ -493,14 +511,92 @@ main {
 }
 
 .checks { list-style: none; display: grid; gap: 5px; }
-.checks li {
+.checks li { display: grid; gap: 4px; font-size: 0.74rem; }
+.check-line { display: flex; align-items: center; gap: 8px; }
+.check-label { color: var(--mid); flex: 1; }
+.check-ratio { color: var(--white); font-variant-numeric: tabular-nums; }
+
+/* What a live boost actually put on screen. Kept quiet — it is a footnote to
+   the verdict above it, not a second verdict. */
+/* Inline flow, not a flex row: the note is one sentence with a swatch and a hex
+   at the front of it, and laying it out as three flex items put the swatch on a
+   line of its own the moment the sentence wrapped. */
+.check-boost {
+  color: var(--faint);
+  font-size: 0.7rem;
+  line-height: 1.5;
+  padding-left: 2px;
+}
+.boost-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  vertical-align: -1px;
+  margin-right: 5px;
+}
+/* The shared .copyable is a full-width row inside a swatch's definition list;
+   here it is a hex sitting in a sentence, so it has to give that width back. */
+.check-boost .copyable {
+  display: inline;
+  width: auto;
+  padding: 0;
+  font-size: inherit;
+  color: var(--white);
+  margin-right: 4px;
+}
+.card.is-boosted { border-color: #2A3A44; }
+
+/* ── spare colours as alternatives ────────────────────────────────── */
+
+.group-note {
+  color: var(--faint);
+  font-size: 0.76rem;
+  line-height: 1.55;
+  max-width: 68ch;
+  margin-bottom: 12px;
+}
+
+.alts {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+  /* start, not stretch: a colour that fits two slots should not be given a card
+     as tall as the one that fits eight. */
+  align-items: start;
+  gap: 12px;
+}
+.alt {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--raised);
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.alt-head { display: flex; align-items: center; gap: 9px; font-size: 0.8rem; }
+.alt-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  flex: none;
+}
+.alt-name { color: var(--white); }
+.alt-hex { color: var(--faint); font-size: 0.72rem; margin-left: auto; }
+.alt-none { color: var(--faint); font-size: 0.74rem; line-height: 1.5; }
+
+.alt-list { list-style: none; display: grid; gap: 5px; }
+.alt-list li {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
   font-size: 0.74rem;
 }
-.check-label { color: var(--mid); flex: 1; }
-.check-ratio { color: var(--white); font-variant-numeric: tabular-nums; }
+.alt-where { color: var(--mid); flex: 1; }
+.alt-list .check-ratio { white-space: nowrap; }
 
 /* ── colour vision findings ───────────────────────────────────────── */
 

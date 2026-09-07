@@ -94,8 +94,21 @@
           <ul class="cards" id="cards"></ul>
         </details>
 
-        <!-- Left to the renderer: this one opens when there is something in
-             it, because a collapsed heading is exactly what a reader skips. -->
+        <!-- Both of the groups below are left to the renderer to open, because
+             a collapsed heading is exactly what a reader skips. -->
+        <details class="group" id="alts-group">
+          <summary>
+            <h3 class="a11y-h">Spare colours as alternatives <span class="group-count" id="alts-count"></span></h3>
+          </summary>
+          <p class="group-note">
+            The pairings commit to one colour per slot, so asking for more
+            colours produces some with nowhere to go. Each one is tried in every
+            slot the pairings use, at the ratio that slot needs — the ones that
+            repair a failing check first.
+          </p>
+          <ul class="alts" id="alts"></ul>
+        </details>
+
         <details class="group" id="findings-group">
           <summary>
             <h3 class="a11y-h">Told apart by colour alone <span class="group-count" id="findings-count"></span></h3>
@@ -146,6 +159,17 @@
           one does. So the pairings are committed to and rendered at real text
           sizes, and the colour-vision check asks a different question again:
           whether two colours stay tellable apart once hue is gone.
+        </p>
+      </div>
+      <div>
+        <h3>Two ways out of a failure</h3>
+        <p>
+          A red verdict is a button. Press it and the colour is walked along
+          lightness — hue and chroma held, chroma given up only if lightness
+          alone cannot get there — until it clears the threshold, and the
+          preview redraws in the colour it found. The other way is to use a
+          colour you already have: every swatch the pairings do not place is
+          assessed against every slot they do.
         </p>
       </div>
       <div>
