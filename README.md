@@ -54,10 +54,13 @@ contrast rather than a second contrast pass: dichromatic simulation roughly
 preserves luminance, so ratios barely move while hue differences collapse. A
 pair is only reported as confusable when it starts clearly distinct, loses at
 least half that difference to the simulation, ends up close in Lab, *and* has
-under 3:1 of contrast. Each condition excludes a different false positive: two
-near-identical greys are untouched by any of the matrices, so reporting them
-would blame the simulation for a palette that never separated them, and above
-3:1 the pair is tellable apart on lightness whatever happens to hue.
+under 3:1 of contrast *in the simulated view*. Each condition excludes a
+different false positive: two near-identical greys are untouched by any of the
+matrices, so reporting them would blame the simulation for a palette that never
+separated them, and above 3:1 the pair is tellable apart on lightness whatever
+happens to hue. That last ratio is measured after simulation rather than before,
+because whether a reader has lightness to fall back on is a property of what
+they see.
 
 ## Running it locally
 

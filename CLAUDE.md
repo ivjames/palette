@@ -53,6 +53,22 @@ as a phantom second build.)
   there is no `.env` on a static site.
 - There is no `.env` here and nothing to keep out of git beyond that — a
   static site has no secrets to hold.
+- **`main` has carried known-broken code once, and it was avoidable.** The
+  accessibility feature was merged two minutes after its review was requested
+  and three minutes before the check-in armed to collect it. The review landed
+  two minutes after the merge with two real defects — one of them a false
+  negative in the colour-vision check, i.e. the feature whose whole job is
+  surfacing accessibility problems quietly dropping real ones. They took a
+  second PR to fix, and `main` was wrong in between. It was caught because a
+  person pushed back on the merge — not by anything in the process, which had
+  by then been actively dismantled: on merging, the PR subscription was
+  cancelled and the scheduled check-in deleted, so the review's arrival could
+  not be noticed. Left alone the defects sit on `main` until the next
+  `palette deploy` puts them live. A review you have just asked for is a
+  response you are expecting, and point 7 of the conventions puts its arrival
+  at about four minutes — merging inside that window is not "not waiting for a
+  human who isn't coming", it is throwing away the review you just requested
+  and then closing the channel it would have arrived on.
 
 ## How the extractor is put together
 
@@ -84,6 +100,39 @@ headroom to spend if the quality ever needs it.
 pairings are worth showing, when two colours count as confusable. The maths it
 leans on (contrast ratio, the CVD matrices) is in `js/color.js`. Keep that split:
 a threshold is a judgement call that gets revised, a matrix is not.
+
+### The confusion criterion, and why it has four conditions
+
+`confusions()` has been wrong three times, each time because a thing that is
+*usually* true got coded as if it were *always* true. Every condition in it is
+there because its absence produced a specific wrong answer. Before loosening
+any of them, check it against the case that put it there:
+
+| condition | the wrong answer without it |
+|---|---|
+| `before >= DISTINCT` (20) | pairs nobody could tell apart anyway |
+| `after <= before * COLLAPSED` (0.5) | greyscale palettes reporting `21 → 21`; simulation cannot touch a neutral, so the pair was never separated and the finding blamed the wrong thing |
+| `after < CONFUSABLE` (25) | pairs still 45 dE apart called confusable |
+| `contrast < RESCUED_BY_LIGHTNESS` (3) | a dark colour and a light one flagged because their hues converged, when lightness tells them apart |
+
+The last one measures the **simulated** colours, not the originals. Dichromatic
+simulation does roughly preserve luminance, which is why the pairing cards
+barely move under it — but "roughly" is not "always", and reading the original
+pair silently drops real findings. `#D10EC1` / `#1D177D` is the case: 3.09:1
+apart normally, 2.13:1 under protanopia, collapsing 55 → 24 dE.
+
+Four cases worth keeping as a regression set, all runnable under plain `node`:
+
+- `#C4483C` / `#468C50` — must report under protanopia and deuteranopia
+- `#DFA96C` / `#B98F2C` — must **not** report; simulation moves it *farther* apart (21 → 23)
+- `#D10EC1` / `#1D177D` — must report; only the simulated contrast reveals it
+- any greyscale palette — must report nothing under all three
+
+One DOM gotcha in the same feature: `<details>` fires `toggle`
+**asynchronously**, so a flag raised around a programmatic `open = …` and
+lowered on the next line is already down when the handler runs. The findings
+group tracks a reader's manual toggle by listening for a click on the
+`<summary>` instead, which a programmatic assignment never dispatches.
 
 `js/palette.js` splits `paletteFromPixels()` out from `extractPalette()` on
 purpose: the first half takes a `Uint8Array` and touches no DOM, so the whole

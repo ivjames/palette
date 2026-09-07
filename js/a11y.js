@@ -95,16 +95,21 @@ const RESCUED_BY_LIGHTNESS = NEEDS.nonText;
  */
 export function confusions(colors, type) {
   if (!type) return [];
-  const sim = colors.map((c) => rgbToLab(simulateCVD(c.rgb, type)));
+  const sim = colors.map((c) => simulateCVD(c.rgb, type));
+  const simLab = sim.map(rgbToLab);
   const lab = colors.map((c) => c.lab || rgbToLab(c.rgb));
   const out = [];
   for (let i = 0; i < colors.length; i++) {
     for (let j = i + 1; j < colors.length; j++) {
       const before = labDistance(lab[i], lab[j]);
-      const after = labDistance(sim[i], sim[j]);
-      // Contrast survives even when hue does not, and that is the whole point
-      // of reporting this separately from the cards.
-      const contrast = contrastRatio(colors[i].rgb, colors[j].rgb);
+      const after = labDistance(simLab[i], simLab[j]);
+      // Measured on the *simulated* colours, because the question is whether
+      // this reader has a lightness difference to fall back on — and that is a
+      // property of what they see, not of the original swatches. Simulation
+      // usually moves a ratio very little, but "usually" is not "never":
+      // #D10EC1 and #1D177D are 3.09:1 apart normally and 2.13:1 under
+      // protanopia, so measuring the originals silently drops a real finding.
+      const contrast = contrastRatio(sim[i], sim[j]);
       if (before < DISTINCT) continue;
       if (after > before * COLLAPSED) continue;
       if (after >= CONFUSABLE || contrast >= RESCUED_BY_LIGHTNESS) continue;
