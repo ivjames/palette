@@ -114,11 +114,10 @@ export function toAccessibility(palette, source) {
       .join(', ');
     lines.push(`  ${resolved.title} — ${slots}`);
     for (const check of resolved.checks) {
-      lines.push(
-        `    ${check.label.padEnd(22)}${ratioText(check.ratio).padStart(8)}  ` +
-        `needs ${check.need.toFixed(1)}  ${check.pass ? 'pass' : 'FAILS'}` +
-        `${check.grade ? `  ${check.grade}` : ''}`,
-      );
+      const verdict = check.advisory
+        ? `advisory — ${check.advisory}`
+        : `needs ${check.need.toFixed(1)}  ${check.pass ? 'pass' : 'FAILS'}${check.grade ? `  ${check.grade}` : ''}`;
+      lines.push(`    ${check.label.padEnd(22)}${ratioText(check.ratio).padStart(8)}  ${verdict}`);
     }
   }
 

@@ -299,6 +299,9 @@ function badgeNode(className, text, title) {
 // be telling the reader they passed and failed at once, so a failure says what
 // it needed instead of what it reached.
 function checkBadge(check) {
+  if (check.advisory) {
+    return badgeNode('is-note', 'Advisory', `${ratioText(check.ratio)} — ${check.advisory}`);
+  }
   if (!check.pass) {
     return badgeNode('is-fail', `✕ Needs ${check.need.toFixed(1)}:1`,
       `${ratioText(check.ratio)} — short of ${check.need.toFixed(1)}:1`);

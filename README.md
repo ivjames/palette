@@ -42,7 +42,9 @@ Contrast is a property of a *pair*, so no swatch is given a WCAG level on its
 own. What the page shows instead is each colour against the two extremes, and
 five pairings committed to specific swatches — page, dark page, primary action,
 raised surface, link — rendered at the text sizes the 4.5:1 and 3:1 thresholds
-are written against. A pairing that cannot reach its threshold is still shown,
+are written against. One number is reported without gating its card: a link's
+contrast against the prose around it is technique G183, which applies where
+colour alone identifies the link, and the preview underlines it. A pairing that cannot reach its threshold is still shown,
 failing: that a palette has no usable body text is the finding, not a reason to
 hide the card.
 

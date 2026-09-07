@@ -433,6 +433,7 @@ main {
 }
 .badge.is-pass { color: #7FD693; border-color: #2A4A32; }
 .badge.is-warn { color: #E0B44C; border-color: #4A3A1B; }
+.badge.is-note { color: var(--faint); }
 .badge.is-fail { color: var(--danger); border-color: #4A1F1B; }
 
 /* ── pairing cards ────────────────────────────────────────────────── */

@@ -245,7 +245,20 @@ export function buildCards(colors) {
     slots: { bg: light, fg: lightText, link },
     checks: [
       { label: 'Link on page', fg: 'link', bg: 'bg', need: NEEDS.body },
-      { label: 'Link against text', fg: 'link', bg: 'fg', need: NEEDS.nonText, kind: 'nonText' },
+      // Advisory, not a gate. The 3:1 against surrounding prose is technique
+      // G183, which applies where colour *alone* identifies the link; the
+      // underline in the preview is already the non-colour cue 1.4.1 asks for,
+      // so failing the card on this would contradict the card's own note. The
+      // number stays because it is what you would need if you dropped the
+      // underline.
+      {
+        label: 'Link against text',
+        fg: 'link',
+        bg: 'fg',
+        need: NEEDS.nonText,
+        kind: 'nonText',
+        advisory: 'Only required if the link is not underlined (WCAG 1.4.1, technique G183)',
+      },
     ],
   });
 
@@ -275,5 +288,11 @@ export function resolveCard(card, type) {
       grade: check.kind === 'nonText' ? null : grade(ratio),
     };
   });
-  return { ...card, slots, checks, passes: checks.every((c) => c.pass) };
+  // An advisory check reports a number without gating the card.
+  return {
+    ...card,
+    slots,
+    checks,
+    passes: checks.every((c) => c.advisory || c.pass),
+  };
 }
