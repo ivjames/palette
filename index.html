@@ -67,6 +67,34 @@
 
     <ul class="swatches" id="swatches"></ul>
 
+    <details class="a11y" id="a11y" open>
+      <summary class="a11y-summary">
+        <h2>Contrast &amp; colour vision</h2>
+        <span class="a11y-hint">What this palette can carry, and what it cannot</span>
+      </summary>
+
+      <div class="a11y-body">
+        <div class="cvd">
+          <span class="field-label" id="cvd-label">Simulate</span>
+          <div class="cvd-tabs" id="cvd-tabs" role="tablist" aria-labelledby="cvd-label"></div>
+        </div>
+
+        <h3 class="a11y-h">Against white and black</h3>
+        <table class="bw">
+          <thead>
+            <tr><th scope="col">Colour</th><th scope="col">On white</th><th scope="col">On black</th></tr>
+          </thead>
+          <tbody id="bw-body"></tbody>
+        </table>
+
+        <h3 class="a11y-h">Likely pairings</h3>
+        <ul class="cards" id="cards"></ul>
+
+        <h3 class="a11y-h">Told apart by colour alone</h3>
+        <ul class="findings" id="findings"></ul>
+      </div>
+    </details>
+
     <div class="exports">
       <div class="export-head">
         <h2>Export</h2>
@@ -99,6 +127,15 @@
           Each colour is scored against the vibrant/muted × light/dark targets,
           so the swatch you actually want for a heading or a background is
           labelled rather than left for you to eyeball.
+        </p>
+      </div>
+      <div>
+        <h3>Contrast is a pair, not a colour</h3>
+        <p>
+          No single swatch has a WCAG level — only a swatch <em>on</em> another
+          one does. So the pairings are committed to and rendered at real text
+          sizes, and the colour-vision check asks a different question again:
+          whether two colours stay tellable apart once hue is gone.
         </p>
       </div>
       <div>

@@ -56,15 +56,16 @@ as a phantom second build.)
 
 ## How the extractor is put together
 
-Five ES modules, no bundler, no dependencies — the browser loads them directly.
+Six ES modules, no bundler, no dependencies — the browser loads them directly.
 
 | module | what it owns |
 |---|---|
-| `js/color.js` | sRGB ↔ HSL ↔ CIE Lab, WCAG relative luminance, contrast |
+| `js/color.js` | sRGB ↔ HSL ↔ CIE Lab, WCAG relative luminance, contrast, CVD simulation |
 | `js/quantize.js` | modified median cut over a 5-bit histogram, then k-means in Lab |
 | `js/names.js` | the colour-name reference table and the palette namer |
 | `js/palette.js` | image → sampled pixels → swatches, plus the vibrant/muted roles |
-| `js/export.js` | every output format (hex, text, CSS, Tailwind v3/v4, JSON) |
+| `js/a11y.js` | contrast thresholds, the pairing cards, colour-vision findings |
+| `js/export.js` | every output format (hex, text, CSS, Tailwind v3/v4, JSON, a11y) |
 | `js/app.js` | DOM wiring only — it knows nothing about colour |
 
 Two stages of extraction, and both are load-bearing. Median cut alone returns
@@ -78,6 +79,11 @@ anything else, so a 6000px camera JPEG costs the same as a screenshot. Measured
 in-browser, a 2800×2200 PNG goes from `change` event to rendered palette in
 about 250ms — the self-imposed contract is five seconds, so there is a lot of
 headroom to spend if the quality ever needs it.
+
+`js/a11y.js` is where WCAG *policy* lives — the 4.5/3/7 thresholds, which
+pairings are worth showing, when two colours count as confusable. The maths it
+leans on (contrast ratio, the CVD matrices) is in `js/color.js`. Keep that split:
+a threshold is a judgement call that gets revised, a matrix is not.
 
 `js/palette.js` splits `paletteFromPixels()` out from `extractPalette()` on
 purpose: the first half takes a `Uint8Array` and touches no DOM, so the whole
